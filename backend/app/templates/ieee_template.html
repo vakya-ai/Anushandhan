@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>
+        body { font-family: 'Times New Roman', Times, serif; margin: 40px; line-height: 1.5; }
+        h1 { text-align: center; }
+        h2 { margin-top: 20px; }
+        .abstract { font-style: italic; margin: 20px 0; }
+        .section { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+
+    <div class="abstract">
+        <h2>Abstract</h2>
+        <p>{{ abstract }}</p>
+    </div>
+
+    <div class="section">
+        <h2>I. Introduction</h2>
+        <p>{{ introduction }}</p>
+    </div>
+
+    <div class="section">
+        <h2>II. Literature Review</h2>
+        <p>{{ literature_review }}</p>
+    </div>
+
+    <div class="section">
+        <h2>III. Methodology</h2>
+        <p>{{ methodology }}</p>
+    </div>
+
+    <div class="section">
+        <h2>IV. Results</h2>
+        <p>{{ results }}</p>
+    </div>
+
+    <div class="section">
+        <h2>V. Discussion</h2>
+        <p>{{ discussion }}</p>
+    </div>
+
+    <div class="section">
+        <h2>VI. Conclusion</h2>
+        <p>{{ conclusion }}</p>
+    </div>
+
+    <div class="section">
+        <h2>References</h2>
+        <ol>
+            {% for ref in references %}
+                <li>{{ ref }}</li>
+            {% endfor %}
+        </ol>
+    </div>
+</body>
+</html>

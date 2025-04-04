@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@react-oauth/google": "^0.12.1",
+    "framer-motion": "^12.4.2",
+    "react-intersection-observer": "^9.15.1",
+    "react-router-dom": "^7.1.5"
+  }
+}

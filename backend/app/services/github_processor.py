@@ -1,89 +1,113 @@
-# backend/app/services/github_processor.py
 import os
-import git
-from pathlib import Path
+import tempfile
+import subprocess
 import shutil
-from typing import List, Dict
+from typing import Dict, List, Optional
 import asyncio
 import aiohttp
-from github import Github
-from github.Repository import Repository
 
 class GitHubProcessor:
-    def __init__(self, working_dir: str = "temp/repos"):
-        self.working_dir = Path(working_dir)
-        self.working_dir.mkdir(parents=True, exist_ok=True)
-
-    async def process_repository(self, repo_url: str, branch: str = "main") -> Dict:
-        """Process a GitHub repository and extract relevant information."""
-        repo_path = self.working_dir / self._get_repo_name(repo_url)
+    """Service for processing GitHub repositories"""
+    
+    async def clone_repository(self, repo_url: str, branch: str = "main") -> str:
+        """
+        Clone a GitHub repository to a temporary directory
+        
+        Args:
+            repo_url: GitHub repository URL
+            branch: Branch to clone
+            
+        Returns:
+            Path to the cloned repository
+        """
+        temp_dir = tempfile.mkdtemp()
         
         try:
-            # Clone repository
-            repo = git.Repo.clone_from(repo_url, repo_path, branch=branch)
+            # Use asyncio subprocess to avoid blocking
+            process = await asyncio.create_subprocess_exec(
+                "git", "clone", "--branch", branch, "--single-branch", repo_url, temp_dir,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
             
-            # Extract repository information
-            repo_info = {
-                "files": self._get_repository_files(repo_path),
-                "readme": self._get_readme_content(repo_path),
-                "metadata": self._extract_repo_metadata(repo)
-            }
+            stdout, stderr = await process.communicate()
             
-            return repo_info
+            if process.returncode != 0:
+                raise Exception(f"Failed to clone repository: {stderr.decode()}")
+                
+            return temp_dir
+            
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            raise e
+    
+    async def read_repository_files(self, repo_path: str) -> Dict[str, str]:
+        """
+        Read all files from the repository
         
-        finally:
-            # Cleanup
-            if repo_path.exists():
-                shutil.rmtree(repo_path)
-
-    def _get_repo_name(self, repo_url: str) -> str:
-        """Extract repository name from URL."""
-        return repo_url.rstrip("/").split("/")[-1]
-
-    def _get_repository_files(self, repo_path: Path) -> List[Dict]:
-        """Get list of files in repository with their content."""
-        files = []
-        for file_path in repo_path.rglob("*"):
-            if file_path.is_file() and self._is_relevant_file(file_path):
-                files.append({
-                    "path": str(file_path.relative_to(repo_path)),
-                    "content": self._read_file_content(file_path),
-                    "extension": file_path.suffix
-                })
-        return files
-
-    def _is_relevant_file(self, file_path: Path) -> bool:
-        """Check if file is relevant for processing."""
-        # Add more extensions as needed
-        relevant_extensions = {
-            ".py", ".java", ".cpp", ".h", ".js", ".ts",
-            ".md", ".txt", ".rst", ".json", ".yaml", ".yml"
-        }
-        return file_path.suffix in relevant_extensions
-
-    def _read_file_content(self, file_path: Path) -> str:
-        """Read content of a file safely."""
-        try:
-            with file_path.open("r", encoding="utf-8") as f:
-                return f.read()
-        except Exception:
-            return ""  # Return empty string if file can't be read
-
-    def _get_readme_content(self, repo_path: Path) -> str:
-        """Get content of README file if it exists."""
-        readme_files = ["README.md", "README.rst", "README.txt"]
-        for readme in readme_files:
-            readme_path = repo_path / readme
-            if readme_path.exists():
-                return self._read_file_content(readme_path)
-        return ""
-
-    def _extract_repo_metadata(self, repo: git.Repo) -> Dict:
-        """Extract metadata from repository."""
-        return {
-            "last_commit": str(repo.head.commit),
-            "branch": repo.active_branch.name,
-            "total_files": len(list(repo.tree().traverse())),
-            "contributors": [{"name": c.name, "email": c.email} 
-                           for c in repo.iter_commits()]
-        }
+        Args:
+            repo_path: Path to the repository
+            
+        Returns:
+            Dictionary mapping file paths to file content
+        """
+        result = {}
+        
+        for root, _, files in os.walk(repo_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, repo_path)
+                
+                # Skip hidden files and directories
+                if any(part.startswith('.') for part in relative_path.split(os.sep)):
+                    continue
+                    
+                try:
+                    # Try to read as text
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    result[relative_path] = content
+                except (UnicodeDecodeError, IOError):
+                    # Skip binary files
+                    pass
+        
+        return result
+    
+    async def get_repository_metadata(self, repo_url: str) -> Dict[str, any]:
+        """
+        Get metadata about a GitHub repository
+        
+        Args:
+            repo_url: GitHub repository URL
+            
+        Returns:
+            Dictionary with repository metadata
+        """
+        # Extract owner and repo name from URL
+        # Example: https://github.com/owner/repo
+        parts = repo_url.rstrip('/').split('/')
+        owner = parts[-2]
+        repo = parts[-1]
+        
+        # GitHub API URL
+        api_url = f"https://api.github.com/repos/{owner}/{repo}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(api_url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to get repository metadata: {await response.text()}")
+                
+                data = await response.json()
+                
+                return {
+                    "name": data.get("name"),
+                    "owner": data.get("owner", {}).get("login"),
+                    "description": data.get("description"),
+                    "stars": data.get("stargazers_count"),
+                    "forks": data.get("forks_count"),
+                    "language": data.get("language"),
+                    "created_at": data.get("created_at"),
+                    "updated_at": data.get("updated_at")
+                }

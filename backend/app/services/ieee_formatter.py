@@ -1,128 +1,146 @@
-# backend/app/services/ieee_formatter.py
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from typing import List, Dict
-import textwrap
-from datetime import datetime
+from typing import Dict, List, Optional
+import jinja2
+import tempfile
+import os
+import asyncio
 
 class IEEEFormatter:
+    """Service for formatting research papers in IEEE style"""
+    
     def __init__(self):
-        self.styles = getSampleStyleSheet()
-        self._setup_styles()
-
-    def _setup_styles(self):
-        """Setup custom styles for IEEE format"""
-        self.styles.add(ParagraphStyle(
-            name='IEEETitle',
-            parent=self.styles['Heading1'],
-            fontSize=14,
-            spaceAfter=30,
-            alignment=1  # Center alignment
-        ))
-        
-        self.styles.add(ParagraphStyle(
-            name='IEEEAuthor',
-            parent=self.styles['Normal'],
-            fontSize=12,
-            spaceAfter=24,
-            alignment=1
-        ))
-        
-        self.styles.add(ParagraphStyle(
-            name='IEEEAbstract',
-            parent=self.styles['Normal'],
-            fontSize=10,
-            spaceAfter=12,
-            leftIndent=36,
-            rightIndent=36
-        ))
-        
-        self.styles.add(ParagraphStyle(
-            name='IEEESection',
-            parent=self.styles['Heading2'],
-            fontSize=12,
-            spaceBefore=12,
-            spaceAfter=6
-        ))
-        
-        self.styles.add(ParagraphStyle(
-            name='IEEEBody',
-            parent=self.styles['Normal'],
-            fontSize=10,
-            spaceBefore=6,
-            spaceAfter=6
-        ))
-
-    def format_paper(self, content: Dict, output_path: str):
-        """Format paper content according to IEEE guidelines"""
-        doc = SimpleDocTemplate(
-            output_path,
-            pagesize=letter,
-            rightMargin=72,
-            leftMargin=72,
-            topMargin=72,
-            bottomMargin=72
+        template_dir = os.path.join(os.path.dirname(__file__), '../templates')
+        self.env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(template_dir),
+            autoescape=jinja2.select_autoescape(['html', 'xml'])
         )
+    
+    async def generate_html(self, paper_data: Dict) -> str:
+        """
+        Generate HTML version of the research paper
         
-        story = []
-        
-        # Title
-        story.append(Paragraph(content['title'], self.styles['IEEETitle']))
-        story.append(Spacer(1, 12))
-        
-        # Abstract
-        story.append(Paragraph('Abstract', self.styles['IEEESection']))
-        story.append(Paragraph(content['abstract'], self.styles['IEEEAbstract']))
-        story.append(Spacer(1, 12))
-        
-        # Main sections
-        sections = [
-            ('Introduction', content['introduction']),
-            ('Methodology', content['methodology']),
-            ('Results', content['results']),
-            ('Conclusion', content['conclusion'])
-        ]
-        
-        for section_title, section_content in sections:
-            story.append(Paragraph(section_title, self.styles['IEEESection']))
+        Args:
+            paper_data: Dictionary containing paper sections and metadata
             
-            # Split content into paragraphs and format each
-            paragraphs = section_content.split('\n\n')
-            for para in paragraphs:
-                story.append(Paragraph(para.strip(), self.styles['IEEEBody']))
+        Returns:
+            HTML string of the formatted paper
+        """
+        try:
+            template = self.env.get_template("ieee_template.html")
+            html = template.render(**paper_data)
+            return html
+        except jinja2.exceptions.TemplateNotFound:
+            # Fallback to simple HTML if template is missing
+            return self._generate_simple_html(paper_data)
+    
+    def _generate_simple_html(self, paper_data: Dict) -> str:
+        """Generate a simple HTML version if the template is missing"""
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>{paper_data.get('title', 'Research Paper')}</title>
+            <style>
+                body {{ font-family: 'Times New Roman', Times, serif; margin: 40px; line-height: 1.5; }}
+                h1 {{ text-align: center; }}
+                h2 {{ margin-top: 20px; }}
+                .abstract {{ font-style: italic; margin: 20px 0; }}
+                .section {{ margin-bottom: 20px; }}
+            </style>
+        </head>
+        <body>
+            <h1>{paper_data.get('title', 'Research Paper')}</h1>
             
-            story.append(Spacer(1, 12))
+            <div class="abstract">
+                <h2>Abstract</h2>
+                <p>{paper_data.get('abstract', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>I. Introduction</h2>
+                <p>{paper_data.get('introduction', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>II. Literature Review</h2>
+                <p>{paper_data.get('literature_review', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>III. Methodology</h2>
+                <p>{paper_data.get('methodology', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>IV. Results</h2>
+                <p>{paper_data.get('results', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>V. Discussion</h2>
+                <p>{paper_data.get('discussion', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>VI. Conclusion</h2>
+                <p>{paper_data.get('conclusion', '')}</p>
+            </div>
+            
+            <div class="section">
+                <h2>References</h2>
+                <ol>
+                    {self._format_references(paper_data.get('references', []))}
+                </ol>
+            </div>
+        </body>
+        </html>
+        """
+        return html
+    
+    def _format_references(self, references: List[str]) -> str:
+        """Format references as HTML list items"""
+        return ''.join([f"<li>{ref}</li>" for ref in references])
+    
+    async def generate_pdf(self, html: str) -> str:
+        """
+        Generate PDF from HTML using a tool like WeasyPrint or wkhtmltopdf
         
-        # Build the PDF
-        doc.build(story)
-
-    def _format_references(self, references: List[Dict]) -> List[Paragraph]:
-        """Format references according to IEEE style"""
-        formatted_refs = []
-        for i, ref in enumerate(references, 1):
-            ref_text = f"[{i}] {ref['authors']}, \"{ref['title']}\", "
-            if ref.get('journal'):
-                ref_text += f"{ref['journal']}, "
-            if ref.get('volume'):
-                ref_text += f"vol. {ref['volume']}, "
-            if ref.get('number'):
-                ref_text += f"no. {ref['number']}, "
-            if ref.get('pages'):
-                ref_text += f"pp. {ref['pages']}, "
-            if ref.get('year'):
-                ref_text += f"{ref['year']}."
+        Args:
+            html: HTML content to convert
             
-            formatted_refs.append(Paragraph(ref_text, self.styles['IEEEBody']))
-        return formatted_refs
-
-    def format_code_snippet(self, code: str, language: str) -> str:
-        """Format code snippets for inclusion in the paper"""
-        wrapped_code = textwrap.fill(code, width=80)
-        return f"""\\begin{{lstlisting}}[language={language}]
-{wrapped_code}
-\\end{{lstlisting}}"""
+        Returns:
+            Path to the generated PDF file
+        """
+        # This is a placeholder. You would implement PDF generation using
+        # a library like WeasyPrint, wkhtmltopdf, or a similar tool.
+        
+        # For example, using wkhtmltopdf via subprocess:
+        with tempfile.NamedTemporaryFile(suffix='.html', delete=False, mode='w') as html_file:
+            html_file.write(html)
+            html_path = html_file.name
+        
+        pdf_path = html_path.replace('.html', '.pdf')
+        
+        try:
+            # Use asyncio subprocess to avoid blocking
+            process = await asyncio.create_subprocess_exec(
+                "wkhtmltopdf", html_path, pdf_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                raise Exception(f"Failed to generate PDF: {stderr.decode()}")
+                
+            # Clean up HTML file
+            os.unlink(html_path)
+                
+            return pdf_path
+            
+        except Exception as e:
+            # Clean up on error
+            if os.path.exists(html_path):
+                os.unlink(html_path)
+            raise e
