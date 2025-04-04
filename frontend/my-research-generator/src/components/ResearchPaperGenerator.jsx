@@ -21,8 +21,8 @@ Feel free to modify and customize the content as needed.
 
 ### Conclusion`);
   const [chatMessages, setChatMessages] = useState([]);
-  const [previewContent, setPreviewContent] = useState('');
-  const [userPromptHistory, setUserPromptHistory] = useState([]);
+  // Removed unused previewContent state
+  // Removed unused userPromptHistory state
   const [layoutChanged, setLayoutChanged] = useState(false);
   const [synopsis, setSynopsis] = useState('');
   const [error, setError] = useState(null);
@@ -93,9 +93,6 @@ Feel free to modify and customize the content as needed.
       timestamp: new Date().toLocaleTimeString()
     };
     
-    // Add to prompt history
-    setUserPromptHistory(prev => [...prev, inputData]);
-    
     // Call the API integration function
     handleFormSubmission(inputData);
     
@@ -117,7 +114,6 @@ Feel free to modify and customize the content as needed.
     if (messageIntervalRef.current) clearInterval(messageIntervalRef.current);
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     
-    setPreviewContent(`Processing: ${inputData.prompt}`);
     setIsProcessing(true);
     setIsGenerating(true);
     setCurrentStep(0); // Reset step counter
