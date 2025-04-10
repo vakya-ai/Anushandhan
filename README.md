@@ -1,3 +1,4 @@
+#GenAI
 ## 🚀 AI Research Paper Generator
 The **AI Research Paper Generator** is an innovative platform designed to help users generate well-written research papers in specified formats like **IEEE** or **Springer**. The AI will analyze input sources such as **GitHub repositories** or **code folders** to automatically create structured research papers. The **Alpha Version** focuses on generating IEEE-formatted papers with good-to-average humanized content based on two input methods: **GitHub Repository link** and **code project folder**.
 
