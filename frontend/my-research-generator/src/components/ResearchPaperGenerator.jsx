@@ -447,13 +447,13 @@ Feel free to modify and customize the content as needed.
     setPaperContent(paperText);
   
     // Generate a summary for the chat
-    let summary = "";
-    const firstParagraph = paperText.split('\n\n')[0];
-    if (firstParagraph) {
-      summary = firstParagraph.substring(0, 100) + (firstParagraph.length > 100 ? "..." : "");
-    } else {
-      summary = "Research paper generated successfully.";
-    }
+    let summary = paperText;
+    // const firstParagraph = paperText.split('\n\n')[0];
+    // if (firstParagraph) {
+    //   summary = firstParagraph.substring(0, 100) + (firstParagraph.length > 100 ? "..." : "");
+    // } else {
+    //   summary = "Research paper generated successfully.";
+    // }
   
     // Create a new assistant message with the paper
     const assistantMessage = {
