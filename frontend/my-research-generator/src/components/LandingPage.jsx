@@ -15,11 +15,27 @@ const LandingPage = () => {
 
   const handleGoogleSuccess = (credentialResponse) => {
     console.log('Google Auth Success:', credentialResponse);
-    // Here you would typically:
-    // 1. Send the credential to your backend
-    // 2. Verify the token
-    // 3. Create/update user session
-    // For now, we'll just navigate to the generator page
+    // Store user info in localStorage for persistence
+    localStorage.setItem('userToken', credentialResponse.credential);
+    
+    // Decode the JWT to get user information
+    try {
+      const base64Url = credentialResponse.credential.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      
+      const userData = JSON.parse(jsonPayload);
+      localStorage.setItem('userData', JSON.stringify({
+        name: userData.name,
+        email: userData.email,
+        picture: userData.picture
+      }));
+    } catch (e) {
+      console.error('Error decoding JWT:', e);
+    }
+    
     navigate('/generator');
   };
 
@@ -74,15 +90,6 @@ const LandingPage = () => {
             <FileText />
             <span>ResearchAI</span>
           </div>
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={handleGoogleError}
-            useOneTap
-            theme="outline"
-            size="large"
-            text="signin_with"
-            shape="rectangular"
-          />
         </nav>
 
         <div className="hero-content">
@@ -108,12 +115,20 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.8 }}
           >
-            <button className="primary-button" onClick={() => navigate('/generator')}>
-              Get Started
-            </button>
-            <button className="secondary-button">
-              Watch Demo
-            </button>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={handleGoogleError}
+              useOneTap
+              theme="filled_blue"
+              size="large"
+              text="signin_with"
+              shape="rectangular"
+              render={({ onClick }) => (
+                <button className="primary-button" onClick={onClick}>
+                  Get Started
+                </button>
+              )}
+            />
           </motion.div>
         </div>
 

@@ -158,6 +158,8 @@ class GeminiGenerator:
         This is a placeholder for the actual implementation that would use the Gemini API
         """
         try:
+            print(f"Gemini API call with system prompt: {system_prompt}")
+            print(f"Gemini API call with user prompt: {user_prompt}")
             # In an async context, we need to run the Gemini call in a thread pool
             response = await asyncio.to_thread(
                 self.model.generate_content,
@@ -166,7 +168,8 @@ class GeminiGenerator:
                     {"role": "user", "parts": [user_prompt]}
                 ]
             )
-            
+            print(f"Gemini API response: {response}")
+        
             return response.text
         except Exception as e:
             print(f"Gemini API error: {str(e)}")
