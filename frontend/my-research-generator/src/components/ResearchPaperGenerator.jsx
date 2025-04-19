@@ -1,17 +1,39 @@
-import { useState, useRef, useEffect } from 'react';
-import { FileText, Sparkles, Brain, Code, PenTool, Bot, Pin, Github, Folder, Send } from 'lucide-react';
-import './ResearchPaperGenerator.css';
+import { useState, useRef, useEffect } from "react";
+import {
+  FileText,
+  Sparkles,
+  Brain,
+  Code,
+  PenTool,
+  Bot,
+  Pin,
+  Github,
+  Folder,
+  User,
+  SendHorizontal,
+  Edit,
+  Download,
+  Copy,
+  MessageSquare
+} from "lucide-react";
+import { useChatHistory } from "../context/ChatHistoryContext.jsx";
+import LeftDrawer from "./LeftDrawer";
+import "./ResearchPaperGenerator.css";
 
 const ResearchPaperGenerator = () => {
-  // All your state and refs remain the same
+  // Access chat history context
+  const { addChat, updateMessages, getCurrentChat, selectedChatId, selectChat } =
+    useChatHistory();
+
+  // All state and refs
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [showPaper, setShowPaper] = useState(false);
+  const [isEditingPaper, setIsEditingPaper] = useState(false);
   const [paperContent, setPaperContent] = useState(`## Research Paper Generated
 
 This is an auto-generated research paper based on your input. 
 Feel free to modify and customize the content as needed.
-
 
 ### Introduction
 
@@ -21,22 +43,21 @@ Feel free to modify and customize the content as needed.
 
 ### Conclusion`);
   const [chatMessages, setChatMessages] = useState([]);
-  // Removed unused previewContent state
-  // Removed unused userPromptHistory state
   const [layoutChanged, setLayoutChanged] = useState(false);
-  const [synopsis, setSynopsis] = useState('');
-  const [error, setError] = useState(null);
-  
+  const [, setError] = useState(null);
+  const [darkMode, setDarkMode] = useState(false);
+
   // Input Section states
   const [isSourceMenuOpen, setIsSourceMenuOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
-  const [inputValue, setInputValue] = useState('');
-  const [sourceUrl, setSourceUrl] = useState('');
+  const [inputValue, setInputValue] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef(null);
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
-  
+  const messagesEndRef = useRef(null);
+
   // Add refs for intervals to properly clean them up
   const stepIntervalRef = useRef(null);
   const messageIntervalRef = useRef(null);
@@ -46,8 +67,90 @@ Feel free to modify and customize the content as needed.
     { text: "Analyzing your code...", icon: <Code /> },
     { text: "Understanding the structure...", icon: <Brain /> },
     { text: "Generating research paper...", icon: <PenTool /> },
-    { text: "Humanizing content...", icon: <Bot /> }
+    { text: "Humanizing content...", icon: <Bot /> },
   ];
+
+  // Handle dark mode toggle
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+    if (!darkMode) {
+      document.body.classList.add("dark-mode");
+    } else {
+      document.body.classList.remove("dark-mode");
+    }
+  };
+
+  // Initialize dark mode from localStorage
+  useEffect(() => {
+    const savedDarkMode = localStorage.getItem("darkMode") === "true";
+    setDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.body.classList.add("dark-mode");
+    }
+  }, []);
+
+  // Save dark mode preference to localStorage
+  useEffect(() => {
+    localStorage.setItem("darkMode", darkMode);
+  }, [darkMode]);
+
+  // Auto scroll to bottom when new message arrives
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
+    }
+
+    // Also scroll the messagesEndRef into view for smooth scrolling
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  // Reset state when a chat is selected
+  useEffect(() => {
+    if (selectedChatId) {
+      const currentChat = getCurrentChat();
+      
+      // Reset messages
+      if (currentChat) {
+        setChatMessages(currentChat.messages || []);
+        setLayoutChanged(true);
+        
+        // Check if this is a new chat with no messages
+        if (currentChat.messages.length === 0) {
+          // Reset all UI state for a fresh chat
+          setShowPaper(false);
+          setIsEditingPaper(false);
+          setPaperContent("");
+          setIsProcessing(false);
+          setIsGenerating(false);
+          setError(null);
+        } else {
+          // Check if the existing chat has a paper generated
+          const paperMessage = currentChat.messages.find(
+            (msg) => msg.role === "assistant" && msg.paperContent
+          );
+
+          if (paperMessage) {
+            setPaperContent(paperMessage.paperContent);
+            // Don't automatically show the paper when switching chats
+            setShowPaper(false);
+            setIsEditingPaper(false);
+          } else {
+            // No paper in this chat
+            setShowPaper(false);
+            setPaperContent("");
+          }
+        }
+      }
+    }
+  }, [selectedChatId, getCurrentChat]);
+
+  // Auto-layout when a chat is selected or started
+  useEffect(() => {
+    if (selectedChatId) {
+      setLayoutChanged(true);
+    }
+  }, [selectedChatId]);
 
   const handleSourceSelect = (source) => {
     setSelectedSource(source);
@@ -57,9 +160,9 @@ Feel free to modify and customize the content as needed.
   const handleFileUpload = (e) => {
     const files = e.target.files;
     if (files) {
-      console.log('Uploaded files:', files);
-      Array.from(files).forEach(file => {
-        console.log('File:', file.name, 'Path:', file.webkitRelativePath);
+      console.log("Uploaded files:", files);
+      Array.from(files).forEach((file) => {
+        console.log("File:", file.name, "Path:", file.webkitRelativePath);
       });
     }
   };
@@ -67,64 +170,92 @@ Feel free to modify and customize the content as needed.
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height =
+        Math.min(textareaRef.current.scrollHeight, 200) + "px";
     }
   }, [inputValue]);
 
   // Add cleanup for all intervals when component unmounts
   useEffect(() => {
+    const stepInterval = stepIntervalRef.current;
+    const messageInterval = messageIntervalRef.current;
+    const pollInterval = pollIntervalRef.current;
+  
     return () => {
-      // Clean up all intervals on unmount
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-      if (messageIntervalRef.current) clearInterval(messageIntervalRef.current);
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (stepInterval) clearInterval(stepInterval);
+      if (messageInterval) clearInterval(messageInterval);
+      if (pollInterval) clearInterval(pollInterval);
     };
   }, []);
-
+  
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isGenerating) return;
-    
+
     const inputData = {
       prompt: inputValue,
       source: selectedSource,
       url: sourceUrl,
-      timestamp: new Date().toLocaleTimeString()
+      timestamp: new Date().toLocaleTimeString(),
     };
-    
+
+    // Create a new chat if none is selected
+    if (!selectedChatId) {
+      const cleanInput = inputValue.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      const chatTopic = cleanInput.substring(0, 50) + (cleanInput.length > 50 ? "..." : "");
+      const newChatId = addChat(chatTopic);
+      selectChat(newChatId);
+    }
+
     // Call the API integration function
     handleFormSubmission(inputData);
-    
+
     // Change to two-column layout
     setLayoutChanged(true);
-    
+
     // Clear the input
-    setInputValue('');
-    setSourceUrl('');
+    setInputValue("");
+    setSourceUrl("");
     setSelectedSource(null);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
   };
 
   const handleFormSubmission = async (inputData) => {
     // Clear any existing errors
     setError(null);
-    
+
     // Clear any previous intervals
     if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
     if (messageIntervalRef.current) clearInterval(messageIntervalRef.current);
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    
+
     setIsProcessing(true);
     setIsGenerating(true);
     setCurrentStep(0); // Reset step counter
-    
-    // Initialize with a loading message
-    setChatMessages([
-      { role: 'system', text: 'Generating your research paper. Please wait...' }
-    ]);
-    
+
+    // Initialize with user and loading messages
+    const newUserMessage = { role: "user", text: inputData.prompt };
+    const loadingMessage = {
+      role: "system",
+      text: "Generating your research paper. Please wait...",
+    };
+
+    const updatedMessages = [...chatMessages, newUserMessage, loadingMessage];
+    setChatMessages(updatedMessages);
+
+    // Update in context
+    updateMessages(updatedMessages);
+
     setShowPaper(false);
-  
+    setIsEditingPaper(false);
+
     // Start the processing steps animation
     let step = 0;
     stepIntervalRef.current = setInterval(() => {
@@ -136,7 +267,7 @@ Feel free to modify and customize the content as needed.
         stepIntervalRef.current = null;
       }
     }, 2000);
-  
+
     try {
       // Prepare the request data
       const requestData = {
@@ -149,73 +280,95 @@ Feel free to modify and customize the content as needed.
           "Results",
           "Discussion",
           "Conclusion",
-          "References"
+          "References",
         ],
         wordCount: 3000,
         sourceType: inputData.source || null,
-        sourceUrl: inputData.url || null
+        sourceUrl: inputData.url || null,
+        repoUrl: inputData.source === "github" ? inputData.url : null,
       };
-  
+
       console.log("Sending request data:", JSON.stringify(requestData));
-  
+
       // Make API call to the backend
-      const response = await fetch('/api/research/generate-paper', {
-        method: 'POST',
+      const response = await fetch("/api/research/generate-paper", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(requestData),
       });
-      
+
       if (!response.ok) {
-        console.error("Server response not OK:", response.status, response.statusText);
+        console.error(
+          "Server response not OK:",
+          response.status,
+          response.statusText
+        );
         let errorMessage = "Failed to generate paper";
-        
+
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorData.detail || errorMessage;
         } catch (parseError) {
           console.error("Error parsing error response:", parseError);
         }
-        
+
         throw new Error(errorMessage);
       }
-      
+
       const data = await response.json();
       console.log("API response:", data);
-      
+
       // If the paper is being processed, poll for updates
       if (data.status === "processing") {
         const documentId = data.document_id;
-        setChatMessages(prev => [...prev, { 
-          role: 'system', 
-          text: 'Your paper is being generated. This may take a few minutes.' 
-        }]);
-        
+
+        // Update the loading message
+        const newMessages = [
+          ...chatMessages.filter((msg) => msg.role !== "system"),
+          newUserMessage,
+          {
+            role: "system",
+            text: "Your paper is being generated. This may take a few minutes.",
+          },
+        ];
+
+        setChatMessages(newMessages);
+        updateMessages(newMessages);
+
         // Poll for updates
         pollIntervalRef.current = setInterval(async () => {
           try {
-            const statusResponse = await fetch(`/api/research/paper/${documentId}`);
-            
+            const statusResponse = await fetch(
+              `/api/research/paper/${documentId}`
+            );
+
             if (!statusResponse.ok) {
               throw new Error(`Status check failed: ${statusResponse.status}`);
             }
-            
+
             const statusData = await statusResponse.json();
             console.log("Poll response:", statusData);
-            
+
             if (statusData.status === "success") {
               clearInterval(pollIntervalRef.current);
               pollIntervalRef.current = null;
-              
+
               if (statusData.paper) {
                 handlePaperGenerated(statusData.paper, inputData.prompt);
               } else {
                 setError("Paper content is empty");
-                setChatMessages(prev => [...prev, { 
-                  role: 'system', 
-                  text: 'Error: Paper content is empty. Please try again with a different topic or repository.' 
-                }]);
+                const errorMessages = [
+                  ...chatMessages.filter((msg) => msg.role !== "system"),
+                  newUserMessage,
+                  {
+                    role: "system",
+                    text: "Error: Paper content is empty. Please try again with a different topic or repository.",
+                  },
+                ];
+                setChatMessages(errorMessages);
+                updateMessages(errorMessages);
                 setIsProcessing(false);
                 setIsGenerating(false);
               }
@@ -229,442 +382,489 @@ Feel free to modify and customize the content as needed.
             console.error("Polling error:", pollError);
             clearInterval(pollIntervalRef.current);
             pollIntervalRef.current = null;
-            
+
             setError(pollError.message);
-            setChatMessages(prev => [...prev, { 
-              role: 'system', 
-              text: `Error: ${pollError.message}. Please try again.` 
-            }]);
+            const errorMessages = [
+              ...chatMessages.filter((msg) => msg.role !== "system"),
+              newUserMessage,
+              {
+                role: "system",
+                text: `Error: ${pollError.message}. Please try again.`,
+              },
+            ];
+            setChatMessages(errorMessages);
+            updateMessages(errorMessages);
             setIsProcessing(false);
             setIsGenerating(false);
           }
         }, 5000); // Poll every 5 seconds
-        
       } else if (data.status === "success") {
         // Paper was generated immediately
         if (data.paper) {
           handlePaperGenerated(data.paper, inputData.prompt);
         } else {
           setError("Paper content is empty");
-          setChatMessages(prev => [...prev, { 
-            role: 'system', 
-            text: 'Error: Paper content is empty. Please try again with a different topic or repository.' 
-          }]);
+          const errorMessages = [
+            ...chatMessages.filter((msg) => msg.role !== "system"),
+            newUserMessage,
+            {
+              role: "system",
+              text: "Error: Paper content is empty. Please try again with a different topic or repository.",
+            },
+          ];
+          setChatMessages(errorMessages);
+          updateMessages(errorMessages);
           setIsProcessing(false);
           setIsGenerating(false);
         }
       } else {
-        throw new Error(data.message || 'Unknown error occurred');
+        throw new Error(data.message || "Unknown error occurred");
       }
     } catch (error) {
-      console.error('Error generating paper:', error);
-      clearInterval(stepIntervalRef.current);
-      stepIntervalRef.current = null;
-      
+      console.error("Error generating paper:", error);
+
       setError(error.message);
-      setChatMessages(prev => [...prev, { 
-        role: 'system', 
-        text: `Error: ${error.message}. Please try again.` 
-      }]);
-      setIsProcessing(false);
-      setIsGenerating(false);
-    }
-  };
-  
-  // Improved handlePaperGenerated function
-  const handlePaperGenerated = (paperText, prompt) => {
-    try {
-      // Safety check for paperText
-      if (!paperText) {
-        console.error("Paper text is empty or undefined");
-        setChatMessages(prev => [
-          ...prev,
-          { role: 'system', text: 'Error: Unable to generate paper content.' }
-        ]);
-        setIsProcessing(false);
-        setIsGenerating(false);
-        return;
-      }
-      
-      // Set the paper content
-      setPaperContent(paperText);
-      
-      // Generate a synopsis from the abstract section or first paragraph
-      const abstractMatch = paperText.match(/Abstract([\s\S]*?)(?=\n##|\n#|$)/i);
-      const synopsisText = abstractMatch 
-        ? abstractMatch[1].trim() 
-        : `This research paper explores ${prompt}, analyzing key aspects and providing insights into this field of study.`;
-      
-      setSynopsis(synopsisText);
-      
-      // Create chat messages for each section
-      const sectionRegex = /##\s*(.*?)\n([\s\S]*?)(?=\n##|\n#|$)/g;
-      const chatMessageArray = [
-        { role: 'system', text: 'Paper generation complete. Here are the sections:' }
+      const errorMessages = [
+        ...chatMessages.filter((msg) => msg.role !== "system"),
+        newUserMessage,
+        {
+          role: "error",
+          text: `Error: ${error.message}. Please try again.`,
+        },
       ];
-      
-      let match;
-      let sections = [];
-      
-      while ((match = sectionRegex.exec(paperText)) !== null) {
-        const sectionTitle = match[1].trim();
-        const sectionContent = match[2].trim();
-        
-        // Add to sections array for tracking
-        sections.push(sectionTitle);
-        
-        // Add section message to chat
-        chatMessageArray.push({
-          role: 'assistant',
-          text: `## ${sectionTitle}\n${sectionContent.length > 300 ? 
-            sectionContent.substring(0, 300) + '...' : 
-            sectionContent}`
-        });
-      }
-      
-      // If no sections were found, add the whole content as one message
-      if (sections.length === 0) {
-        chatMessageArray.push({
-          role: 'assistant',
-          text: paperText.length > 500 ? paperText.substring(0, 500) + '...' : paperText
-        });
-      }
-      
-      // Add a summary of sections
-      if (sections.length > 0) {
-        chatMessageArray.splice(1, 0, { 
-          role: 'system', 
-          text: `Generated paper contains the following sections: ${sections.join(', ')}` 
-        });
-      }
-      
-      // Complete processing and show paper
-      setCurrentStep(processingSteps.length - 1);
-      
-      // Clear step interval if still running
-      if (stepIntervalRef.current) {
-        clearInterval(stepIntervalRef.current);
-        stepIntervalRef.current = null;
-      }
-      
-      // First set initial messages and show paper
-      setTimeout(() => {
-        setIsProcessing(false);
-        setShowPaper(true);
-        
-        // Keep existing messages and add just first message
-        setChatMessages(prev => [...prev, chatMessageArray[0]]);
-        
-        // Then add remaining messages progressively with a reference for cleanup
-        let index = 1;
-        messageIntervalRef.current = setInterval(() => {
-          if (index < chatMessageArray.length) {
-            setChatMessages(prev => [...prev, chatMessageArray[index]]);
-            index++;
-          } else {
-            clearInterval(messageIntervalRef.current);
-            messageIntervalRef.current = null;
-            setIsGenerating(false);
-          }
-        }, 1000);
-      }, 1500);
-    } catch (err) {
-      console.error("Error in handlePaperGenerated:", err);
-      
-      // Clear any running intervals
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-      if (messageIntervalRef.current) clearInterval(messageIntervalRef.current);
-      stepIntervalRef.current = null;
-      messageIntervalRef.current = null;
-      
-      setError("An error occurred while processing the generated paper. Please try again.");
-      setChatMessages(prev => [...prev, { 
-        role: 'system', 
-        text: `Error: ${err.message}. Please try again.` 
-      }]);
+      setChatMessages(errorMessages);
+      updateMessages(errorMessages);
       setIsProcessing(false);
       setIsGenerating(false);
     }
   };
 
-  // Auto scroll to bottom when new message arrives
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+  const handlePaperGenerated = (paperText) => {
+    setIsProcessing(false);
+    setIsGenerating(false);
+  
+    // Set the paper content
+    setPaperContent(paperText);
+  
+    // Generate a summary for the chat
+    let summary = "";
+    const firstParagraph = paperText.split('\n\n')[0];
+    if (firstParagraph) {
+      summary = firstParagraph.substring(0, 100) + (firstParagraph.length > 100 ? "..." : "");
+    } else {
+      summary = "Research paper generated successfully.";
     }
-  }, [chatMessages]);
-
-  // Add error boundary effect
-  useEffect(() => {
-    // This will help recover from rendering errors
-    const handleError = (error) => {
-      console.error("Caught runtime error:", error);
-      
-      // Clean up all intervals on error
-      if (stepIntervalRef.current) clearInterval(stepIntervalRef.current);
-      if (messageIntervalRef.current) clearInterval(messageIntervalRef.current);
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      stepIntervalRef.current = null;
-      messageIntervalRef.current = null;
-      pollIntervalRef.current = null;
-      
-      setError("A rendering error occurred. Please refresh the page.");
-      setIsProcessing(false);
-      setIsGenerating(false);
+  
+    // Create a new assistant message with the paper
+    const assistantMessage = {
+      role: "assistant",
+      text: `Here is your generated research paper:\n\n${summary}`,
+      paperContent: paperText,
+      timestamp: new Date().toISOString()
     };
+  
+    // Update chat messages by removing the loading message and adding the assistant response
+    const newMessages = [
+      ...chatMessages.filter((msg) => msg.role !== "system"),
+      assistantMessage,
+    ];
+    setChatMessages(newMessages);
+    updateMessages(newMessages);
+  
+    // Show the paper immediately
+    setShowPaper(true);
+    setIsEditingPaper(false);
+  };
 
-    window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
-  }, []);
+  const handleEditPaper = () => {
+    setIsEditingPaper(true);
+  };
 
-  const features = [
-    {
-      icon: <FileText className="feature-icon" />,
-      title: "IEEE Format",
-      description: "Automatically generates papers following IEEE formatting guidelines"
-    },
-    {
-      icon: <Sparkles className="feature-icon" />,
-      title: "AI-Powered Analysis",
-      description: "Advanced AI algorithms analyze your code and generate human-readable content"
-    },
-    {
-      icon: <FileText className="feature-icon" />,
-      title: "Research Quality",
-      description: "Produces academic-grade content suitable for publication"
+  const handleCopyToClipboard = () => {
+    navigator.clipboard.writeText(paperContent).then(
+      () => {
+        // Create a system message to inform the user
+        const systemMessage = {
+          role: "system",
+          text: "Paper content copied to clipboard",
+        };
+        const newMessages = [...chatMessages, systemMessage];
+        setChatMessages(newMessages);
+        updateMessages(newMessages);
+      },
+      (err) => {
+        console.error("Failed to copy text: ", err);
+        setError("Failed to copy to clipboard: " + err.message);
+      }
+    );
+  };
+
+  const handleSavePaper = () => {
+    try {
+      const blob = new Blob([paperContent], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "research-paper.md";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Create a system message to inform the user
+      const systemMessage = {
+        role: "system",
+        text: "Research paper saved as research-paper.md",
+      };
+      const newMessages = [...chatMessages, systemMessage];
+      setChatMessages(newMessages);
+      updateMessages(newMessages);
+    } catch (error) {
+      console.error("Error saving paper:", error);
+      setError("Failed to save paper: " + error.message);
     }
-  ];
+  };
 
   return (
-    <div className={`container ${layoutChanged ? 'layout-changed' : ''}`}>
-      <div className="header">
-        <div className="logo">
-          <FileText className="logo-icon" />
-          <span>AI Research Paper Generator</span>
-        </div>
-        <h1>Transform Your Code into Research Papers</h1>
-        <p>
-          Generate conference-formatted research papers automatically from your GitHub repositories
-          <br />or code projects using advanced AI.
-        </p>
-      </div>
+    <div className={`container ${darkMode ? "dark-mode" : ""}`}>
+      <div className="main-content">
+        {layoutChanged && (
+          <LeftDrawer darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+        )}
 
-      <div className={`main-content ${layoutChanged ? 'two-column' : ''}`}>
-        {/* Left Column - Chat History and Input */}
-        <div className="left-column">
-          {layoutChanged && (
-            <div className="chat-container-left" ref={chatContainerRef}>
-              {isProcessing && (
-                <div className="processing-container-left">
-                  {processingSteps.map((step, index) => (
-                    <div key={index} className={`processing-step ${index === currentStep ? 'active' : ''} ${index < currentStep ? 'completed' : ''}`}>
-                      <div className="processing-icon">{step.icon}</div>
-                      <p>{step.text}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-              
-              {showPaper && synopsis && (
-                <div className="chat-message system">
-                  <strong>Paper Synopsis:</strong>
-                  {synopsis}
-                </div>
-              )}
-              
-              {/* This is the part that's causing the error - needs a null check */}
-              {chatMessages && chatMessages.length > 0 && chatMessages.map((msg, index) => (
-                // Add null check to make sure msg and msg.role exist
-                msg && msg.role ? (
-                  <div key={`msg-${index}`} className={`chat-message ${msg.role}`}>
-                    {msg.text}
-                  </div>
-                ) : null
-              ))}
-              
-              {error && (
-                <div className="chat-message error">
-                  {error}
-                </div>
-              )}
-              
-              {isGenerating && (
-                <div className="typing-indicator">
-                  <span></span>
-                  <span></span>
-                  <span></span>
-                </div>
-              )}
-            </div>
+        <div className={`right-column ${!layoutChanged ? "no-drawer" : ""}`}>
+          {!layoutChanged && (
+            <header className="header">
+              <div className="logo">
+                <FileText className="logo-icon" />
+                <span>ResearchAI</span>
+              </div>
+              <h1>Research Paper Generator</h1>
+              <p>
+                Generate comprehensive research papers from any source. Input
+                your topic or provide a code repository to get started.
+              </p>
+            </header>
           )}
 
-          {/* Integrated Input Section */}
-          <div className={`input-section-container ${isGenerating ? 'generating' : ''}`}>
-            <form onSubmit={handleSubmit} className="input-container">
-              {/* Source Selection Button */}
-              <button
-                type="button"
-                onClick={() => setIsSourceMenuOpen(!isSourceMenuOpen)}
-                className="source-button"
-                disabled={isGenerating}
-              >
-                <Pin size={20} />
-              </button>
-
-              {/* Main Input Field */}
-              <textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Message AcademAI..."
-                className="input-field"
-                rows={1}
-                disabled={isGenerating}
-              />
+          {isProcessing ? (
+            <div className="processing-container">
+              {processingSteps.map((step, index) => (
+                <div
+                  key={index}
+                  className={`processing-step ${
+                    index === currentStep ? "active" : ""
+                  } ${index < currentStep ? "completed" : ""}`}
+                >
+                  <div className="processing-icon">{step.icon}</div>
+                  <div className="processing-text">{step.text}</div>
+                </div>
+              ))}
+            </div>
+          ) : showPaper ? (
+            <div className="paper-container">
+              <h2>Generated Research Paper</h2>
               
-              <button
-                type="submit"
-                className="send-button"
-                disabled={!inputValue.trim() || isGenerating}
+              {isEditingPaper ? (
+                <>
+                  <textarea
+                    className="paper-content-editor"
+                    value={paperContent}
+                    onChange={(e) => setPaperContent(e.target.value)}
+                    style={{
+                      width: "100%",
+                      minHeight: "60vh",
+                      padding: "20px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontFamily: "inherit",
+                      fontSize: "inherit",
+                      lineHeight: "1.6",
+                      resize: "vertical"
+                    }}
+                  />
+                  
+                  <div className="paper-actions">
+                    <button
+                      className="submit-button primary"
+                      onClick={() => {
+                        setIsEditingPaper(false);
+                        
+                        // Create a system message to inform user of save
+                        const systemMessage = {
+                          role: "system",
+                          text: "Paper edits saved",
+                        };
+                        const newMessages = [...chatMessages, systemMessage];
+                        setChatMessages(newMessages);
+                        updateMessages(newMessages);
+                      }}
+                    >
+                      Save Edits
+                    </button>
+                    
+                    <button
+                      className="submit-button secondary"
+                      onClick={() => {
+                        // Discard changes and restore original content
+                        setIsEditingPaper(false);
+                        
+                        // Get original content from chat
+                        const paperMessage = chatMessages.find(
+                          (msg) => msg.role === "assistant" && msg.paperContent
+                        );
+                        
+                        if (paperMessage) {
+                          setPaperContent(paperMessage.paperContent);
+                        }
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div 
+                    className="paper-content-display"
+                    style={{ 
+                      whiteSpace: "pre-wrap", 
+                      fontFamily: "inherit",
+                      padding: "20px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      maxHeight: "60vh",
+                      overflowY: "auto",
+                      lineHeight: "1.6"
+                    }}
+                  >
+                    {paperContent}
+                  </div>
+                  
+                  <div className="paper-actions">
+                    <div className="paper-action-buttons">
+                      <button 
+                        className="action-button"
+                        onClick={handleEditPaper}
+                        title="Edit Paper"
+                      >
+                        <Edit size={16} />
+                        <span>Edit</span>
+                      </button>
+                      
+                      <button 
+                        className="action-button"
+                        onClick={handleCopyToClipboard}
+                        title="Copy to Clipboard"
+                      >
+                        <Copy size={16} />
+                        <span>Copy</span>
+                      </button>
+                      
+                      <button 
+                        className="action-button"
+                        onClick={handleSavePaper}
+                        title="Download Paper"
+                      >
+                        <Download size={16} />
+                        <span>Download</span>
+                      </button>
+                      
+                      <button
+                        className="action-button secondary"
+                        onClick={() => setShowPaper(false)}
+                        title="Return to Chat"
+                      >
+                        <MessageSquare size={16} />
+                        <span>Chat</span>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div
+                className="chat-container"
+                ref={chatContainerRef}
+                style={{ display: chatMessages.length > 0 ? "flex" : "none" }}
               >
-                <Send size={20} />
-              </button>
+                {chatMessages.map((message, index) => (
+                  <div key={index} className={`chat-message ${message.role}`}>
+                    {message.text}
+                  </div>
+                ))}
+                {isGenerating && (
+                  <div className="typing-indicator">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-              {/* Source Selection Menu */}
+              {chatMessages.length === 0 && (
+                <div className="empty-chat">
+                  <div className="empty-chat-content">
+                    <Sparkles size={48} className="empty-chat-icon" />
+                    <h1>Generate Research Papers</h1>
+                    <p>
+                      Enter your topic or paste code to generate a research
+                      paper
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div
+            className={`input-section-container ${
+              isGenerating ? "generating" : ""
+            } ${!layoutChanged ? "no-drawer" : ""}`}
+          >
+            <form onSubmit={handleSubmit}>
+              <div className="input-container">
+                {selectedSource && (
+                  <button
+                    type="button"
+                    className="source-button"
+                    onClick={() => setSelectedSource(null)}
+                    title="Remove source"
+                  >
+                    <Pin size={18} />
+                  </button>
+                )}
+
+                <textarea
+                  ref={textareaRef}
+                  className="input-field"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Enter a topic to start generating a research paper..."
+                  rows={1}
+                />
+
+                <button
+                  type="button"
+                  className="source-button"
+                  onClick={() => setIsSourceMenuOpen(!isSourceMenuOpen)}
+                  title="Add source"
+                >
+                  <Pin size={18} />
+                </button>
+
+                <button
+                  type="submit"
+                  className="send-button"
+                  disabled={!inputValue.trim() || isGenerating}
+                >
+                  <SendHorizontal size={18} />
+                </button>
+              </div>
+
               {isSourceMenuOpen && (
                 <div className="source-menu">
                   <button
                     type="button"
-                    onClick={() => handleSourceSelect('github')}
                     className="source-option"
+                    onClick={() => handleSourceSelect("github")}
                   >
-                    <Github size={20} />
-                    <span>GitHub Repository</span>
+                    <Github size={18} />
+                    GitHub Repository
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => handleSourceSelect('folder')}
                     className="source-option"
+                    onClick={() => {
+                      fileInputRef.current?.click();
+                      setIsSourceMenuOpen(false);
+                      setSelectedSource("folder");
+                    }}
                   >
-                    <Folder size={20} />
-                    <span>Upload Folder</span>
+                    <Folder size={18} />
+                    Upload Folder
                   </button>
+
                   <button
                     type="button"
-                    onClick={() => handleSourceSelect('drive')}
                     className="source-option"
+                    onClick={() => handleSourceSelect("url")}
                   >
-                    <FileText size={20} />
-                    <span>Google Drive</span>
+                    <FileText size={18} />
+                    URL / Link
+                  </button>
+
+                  <button
+                    type="button"
+                    className="source-option"
+                    onClick={() => handleSourceSelect("manual")}
+                  >
+                    <User size={18} />
+                    Manual Input
                   </button>
                 </div>
               )}
-            </form>
 
-            {/* Source URL Input */}
-            {selectedSource && (
-              <div className="source-input-wrapper">
-                {selectedSource === 'github' && (
-                  <input
-                    type="url"
-                    placeholder="Enter GitHub repository URL"
-                    value={sourceUrl}
-                    onChange={(e) => setSourceUrl(e.target.value)}
-                    className="source-input"
-                    disabled={isGenerating}
-                  />
-                )}
-                {selectedSource === 'folder' && (
-                  <div>
+              {selectedSource && (
+                <div className="source-input-wrapper">
+                  {selectedSource === "github" && (
                     <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileUpload}
-                      webkitdirectory="true"
-                      multiple
-                      style={{ display: 'none' }}
-                      disabled={isGenerating}
+                      type="text"
+                      className="source-input"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="Enter GitHub repository URL..."
                     />
+                  )}
+
+                  {selectedSource === "url" && (
+                    <input
+                      type="text"
+                      className="source-input"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="Enter URL to a paper, article, or document..."
+                    />
+                  )}
+
+                  {selectedSource === "manual" && (
+                    <textarea
+                      className="source-input"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="Enter additional context or information..."
+                      rows={3}
+                    ></textarea>
+                  )}
+
+                  {selectedSource === "folder" && (
                     <button
                       type="button"
-                      onClick={() => fileInputRef.current?.click()}
                       className="folder-upload-button"
-                      disabled={isGenerating}
+                      onClick={() => fileInputRef.current?.click()}
                     >
-                      Choose Folder
+                      Select folder to upload
                     </button>
-                  </div>
-                )}
-                {selectedSource === 'drive' && (
-                  <input
-                    type="url"
-                    placeholder="Enter Google Drive link"
-                    value={sourceUrl}
-                    onChange={(e) => setSourceUrl(e.target.value)}
-                    className="source-input"
-                    disabled={isGenerating}
-                  />
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
 
-            {!layoutChanged && (
-              <div className="chat-disclaimer">
-                AcademAI may display inaccurate info, including about people, places, facts, and events
-              </div>
-            )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                webkitdirectory="true"
+                style={{ display: "none" }}
+                onChange={handleFileUpload}
+              />
+            </form>
           </div>
         </div>
-
-        {/* Right Column - Generated Content */}
-        {layoutChanged && (
-          <div className="right-column">
-            {/* Paper Content */}
-            {showPaper && (
-              <div className="paper-container">
-                <h2>Generated Research Paper</h2>
-                <p className="paper-subtitle">You can edit the content below:</p>
-                <textarea
-                  className="paper-content"
-                  value={paperContent}
-                  onChange={(e) => setPaperContent(e.target.value)}
-                  rows={20}
-                />
-                <div className="paper-actions">
-                  <button className="submit-button">Download as PDF</button>
-                  <button 
-                    className="submit-button secondary"
-                    onClick={() => {
-                      navigator.clipboard.writeText(paperContent);
-                      alert('Paper content copied to clipboard!');
-                    }}
-                  >
-                    Copy to Clipboard
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
       </div>
-
-      {/* Features Section - Only visible before layout change */}
-      {!layoutChanged && (
-        <div className="features-section">
-          <h2>Features</h2>
-          <div className="features-grid">
-            {features.map((feature, index) => (
-              <div key={index} className="feature-card">
-                <div className="feature-icon-wrapper">
-                  {feature.icon}
-                </div>
-                <h3>{feature.title}</h3>
-                <p>{feature.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

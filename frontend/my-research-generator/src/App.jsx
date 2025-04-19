@@ -1,6 +1,7 @@
 // src/App.jsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { ChatHistoryProvider } from './context/ChatHistoryContext';
 import LandingPage from './components/LandingPage';
 import ResearchPaperGenerator from './components/ResearchPaperGenerator';
 
@@ -9,12 +10,14 @@ function App() {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <Router>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/generator" element={<ResearchPaperGenerator />} />
-        </Routes>
-      </Router>
+      <ChatHistoryProvider>
+        <Router>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/generator" element={<ResearchPaperGenerator />} />
+          </Routes>
+        </Router>
+      </ChatHistoryProvider>
     </GoogleOAuthProvider>
   );
 }
