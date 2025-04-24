@@ -6,19 +6,20 @@ import {
   Code,
   PenTool,
   Bot,
-  Pin,
+  Github,
   SendHorizontal,
   Edit,
   Download,
   Copy,
-  MessageSquare
+  MessageSquare,
+  X
 } from "lucide-react";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import LeftDrawer from "./LeftDrawer";
-import ChatMessage from "./ChatMessage"; // Import our new component
+import ChatMessage from "./ChatMessage";
 import "./ResearchPaperGenerator.css";
 import "./ResearchPaperStyles.css";
-import "./ChatMessageStyles.css"; // Import new styles
+import "./ChatMessageStyles.css";
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -47,16 +48,16 @@ const ResearchPaperGenerator = () => {
   const [darkMode, setDarkMode] = useState(false);
 
   // Input Section states
-  const [isSourceMenuOpen, setIsSourceMenuOpen] = useState(false);
+  const [showGithubInput, setShowGithubInput] = useState(false);
   const [selectedSource, setSelectedSource] = useState(null);
   const [inputValue, setInputValue] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  //const fileInputRef = useRef(null);
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
   const paperContentRef = useRef(null);
+  const githubInputRef = useRef(null);
 
   // Add refs for intervals to properly clean them up
   const stepIntervalRef = useRef(null);
@@ -181,24 +182,24 @@ const ResearchPaperGenerator = () => {
     }
   }, [selectedChatId]);
 
-  // const handleSourceSelect = (source) => {
-  //   setSelectedSource(source);
-  //   setIsSourceMenuOpen(false);
-  // };
-
-  // const handleFileUpload = (e) => {
-  //   const files = e.target.files;
-  //   if (files) {
-  //     console.log("Uploaded files:", files);
-  //     Array.from(files).forEach((file) => {
-  //       console.log("File:", file.name, "Path:", file.webkitRelativePath);
-  //     });
-  //   }
-  // };
-
-  // Open paper in full view
-  const handleOpenFullPaper = () => {
-    setShowPaper(true);
+  // Toggle GitHub URL input field
+  const toggleGithubInput = () => {
+    // If we're already showing the GitHub input and have the source set, clear it
+    if (showGithubInput && selectedSource === "github") {
+      setSelectedSource(null);
+      setSourceUrl("");
+      setShowGithubInput(false);
+    } else {
+      // Otherwise, show the GitHub input and set github as the source
+      setSelectedSource("github");
+      setShowGithubInput(true);
+      // Focus the input field after it appears
+      setTimeout(() => {
+        if (githubInputRef.current) {
+          githubInputRef.current.focus();
+        }
+      }, 100);
+    }
   };
 
   // Auto-resize textarea
@@ -223,9 +224,23 @@ const ResearchPaperGenerator = () => {
     };
   }, []);
   
+  // Add the missing handleOpenFullPaper function
+  const handleOpenFullPaper = (message) => {
+    if (message.paperContent) {
+      setPaperContent(message.paperContent);
+      setPaperHtml(convertMarkdownToHtml(message.paperContent));
+      setShowPaper(true);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!inputValue.trim() || isGenerating) return;
+
+    if (selectedSource === "github" && !sourceUrl.trim()) {
+      alert("Please enter a GitHub repository URL.");
+      return;
+    }
 
     const inputData = {
       prompt: inputValue,
@@ -252,12 +267,25 @@ const ResearchPaperGenerator = () => {
     setInputValue("");
     setSourceUrl("");
     setSelectedSource(null);
+    setShowGithubInput(false);
   };
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
+    }
+  };
+
+  // Handle key down for GitHub URL input
+  const handleGithubKeyDown = (e) => {
+    if (e.key === "Enter") {
+      // Focus back on the main input field
+      textareaRef.current?.focus();
+    } else if (e.key === "Escape") {
+      setShowGithubInput(false);
+      setSelectedSource(null);
+      setSourceUrl("");
     }
   };
 
@@ -811,47 +839,83 @@ const ResearchPaperGenerator = () => {
             } ${!layoutChanged ? "no-drawer" : ""}`}
           >
             <form onSubmit={handleSubmit}>
-              <div className="input-container">
-                {selectedSource && (
+              <div className="input-form-container">
+                <div className="input-container">
+                  {selectedSource === "github" && !showGithubInput && (
+                    <div className="active-source">
+                      <Github size={18} />
+                      <span>{sourceUrl || "GitHub Repository"}</span>
+                      <button
+                        type="button"
+                        className="remove-source"
+                        onClick={() => {
+                          setSelectedSource(null);
+                          setSourceUrl("");
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  )}
+                  
+                  <textarea
+                    ref={textareaRef}
+                    className="input-field"
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Enter a topic to start generating a research paper..."
+                    rows={1}
+                  />
+                
                   <button
                     type="button"
-                    className="source-button"
-                    onClick={() => setSelectedSource(null)}
-                    title="Remove source"
+                    className={`source-button ${selectedSource === "github" ? "active" : ""}`}
+                    onClick={toggleGithubInput}
+                    title="Add GitHub repository"
                   >
-                    <Pin size={18} />
+                    <Github size={18} />
                   </button>
+                
+                  <button
+                    type="submit"
+                    className="send-button"
+                    disabled={!inputValue.trim() || isGenerating}
+                  >
+                    <SendHorizontal size={18} />
+                  </button>
+                </div>
+                
+                {/* GitHub URL input field appears directly below the main input */}
+                {showGithubInput && (
+                  <div className="github-url-container">
+                    <div className="github-url-input-wrapper">
+                      <Github size={18} className="github-input-icon" />
+                      <input
+                        ref={githubInputRef}
+                        type="text"
+                        value={sourceUrl}
+                        onChange={(e) => setSourceUrl(e.target.value)}
+                        onKeyDown={handleGithubKeyDown}
+                        placeholder="Enter GitHub repository URL..."
+                        className="github-url-input"
+                      />
+                      <button
+                        type="button"
+                        className="github-url-close"
+                        onClick={() => {
+                          setShowGithubInput(false);
+                          if (!sourceUrl.trim()) {
+                            setSelectedSource(null);
+                          }
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
                 )}
-  
-                <textarea
-                  ref={textareaRef}
-                  className="input-field"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Enter a topic to start generating a research paper..."
-                  rows={1}
-                />
-  
-                <button
-                  type="button"
-                  className="source-button"
-                  onClick={() => setIsSourceMenuOpen(!isSourceMenuOpen)}
-                  title="Add source"
-                >
-                  <Pin size={18} />
-                </button>
-  
-                <button
-                  type="submit"
-                  className="send-button"
-                  disabled={!inputValue.trim() || isGenerating}
-                >
-                  <SendHorizontal size={18} />
-                </button>
               </div>
-  
-              {/* Rest of the input form code remains the same */}
             </form>
           </div>
         </div>
