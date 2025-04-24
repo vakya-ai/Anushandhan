@@ -7,9 +7,6 @@ import {
   PenTool,
   Bot,
   Pin,
-  Github,
-  Folder,
-  User,
   SendHorizontal,
   Edit,
   Download,
@@ -18,7 +15,19 @@ import {
 } from "lucide-react";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import LeftDrawer from "./LeftDrawer";
+import ChatMessage from "./ChatMessage"; // Import our new component
 import "./ResearchPaperGenerator.css";
+import "./ResearchPaperStyles.css";
+import "./ChatMessageStyles.css"; // Import new styles
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+// Configure marked with better defaults
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  headerIds: true
+});
 
 const ResearchPaperGenerator = () => {
   // Access chat history context
@@ -30,18 +39,8 @@ const ResearchPaperGenerator = () => {
   const [currentStep, setCurrentStep] = useState(0);
   const [showPaper, setShowPaper] = useState(false);
   const [isEditingPaper, setIsEditingPaper] = useState(false);
-  const [paperContent, setPaperContent] = useState(`## Research Paper Generated
-
-This is an auto-generated research paper based on your input. 
-Feel free to modify and customize the content as needed.
-
-### Introduction
-
-### Methodology
-
-### Results
-
-### Conclusion`);
+  const [paperContent, setPaperContent] = useState("");
+  const [paperHtml, setPaperHtml] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [layoutChanged, setLayoutChanged] = useState(false);
   const [, setError] = useState(null);
@@ -53,10 +52,11 @@ Feel free to modify and customize the content as needed.
   const [inputValue, setInputValue] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
-  const fileInputRef = useRef(null);
+  //const fileInputRef = useRef(null);
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const paperContentRef = useRef(null);
 
   // Add refs for intervals to properly clean them up
   const stepIntervalRef = useRef(null);
@@ -69,6 +69,32 @@ Feel free to modify and customize the content as needed.
     { text: "Generating research paper...", icon: <PenTool /> },
     { text: "Humanizing content...", icon: <Bot /> },
   ];
+
+  // Function to convert markdown to HTML
+  const convertMarkdownToHtml = (markdown) => {
+    if (!markdown) return '';
+    
+    try {
+      // Convert markdown to HTML
+      const rawHtml = marked.parse(markdown);
+      
+      // Sanitize HTML to prevent XSS attacks
+      const sanitizedHtml = DOMPurify.sanitize(rawHtml);
+      
+      return sanitizedHtml;
+    } catch (error) {
+      console.error('Error converting markdown to HTML:', error);
+      return `<p>Error rendering content: ${error.message}</p>`;
+    }
+  };
+
+  // Generate HTML when paperContent changes
+  useEffect(() => {
+    if (paperContent) {
+      const html = convertMarkdownToHtml(paperContent);
+      setPaperHtml(html);
+    }
+  }, [paperContent]);
 
   // Handle dark mode toggle
   const toggleDarkMode = () => {
@@ -121,6 +147,7 @@ Feel free to modify and customize the content as needed.
           setShowPaper(false);
           setIsEditingPaper(false);
           setPaperContent("");
+          setPaperHtml("");
           setIsProcessing(false);
           setIsGenerating(false);
           setError(null);
@@ -132,6 +159,7 @@ Feel free to modify and customize the content as needed.
 
           if (paperMessage) {
             setPaperContent(paperMessage.paperContent);
+            setPaperHtml(convertMarkdownToHtml(paperMessage.paperContent));
             // Don't automatically show the paper when switching chats
             setShowPaper(false);
             setIsEditingPaper(false);
@@ -139,6 +167,7 @@ Feel free to modify and customize the content as needed.
             // No paper in this chat
             setShowPaper(false);
             setPaperContent("");
+            setPaperHtml("");
           }
         }
       }
@@ -152,19 +181,24 @@ Feel free to modify and customize the content as needed.
     }
   }, [selectedChatId]);
 
-  const handleSourceSelect = (source) => {
-    setSelectedSource(source);
-    setIsSourceMenuOpen(false);
-  };
+  // const handleSourceSelect = (source) => {
+  //   setSelectedSource(source);
+  //   setIsSourceMenuOpen(false);
+  // };
 
-  const handleFileUpload = (e) => {
-    const files = e.target.files;
-    if (files) {
-      console.log("Uploaded files:", files);
-      Array.from(files).forEach((file) => {
-        console.log("File:", file.name, "Path:", file.webkitRelativePath);
-      });
-    }
+  // const handleFileUpload = (e) => {
+  //   const files = e.target.files;
+  //   if (files) {
+  //     console.log("Uploaded files:", files);
+  //     Array.from(files).forEach((file) => {
+  //       console.log("File:", file.name, "Path:", file.webkitRelativePath);
+  //     });
+  //   }
+  // };
+
+  // Open paper in full view
+  const handleOpenFullPaper = () => {
+    setShowPaper(true);
   };
 
   // Auto-resize textarea
@@ -445,20 +479,15 @@ Feel free to modify and customize the content as needed.
   
     // Set the paper content
     setPaperContent(paperText);
-  
-    // Generate a summary for the chat
-    let summary = paperText;
-    // const firstParagraph = paperText.split('\n\n')[0];
-    // if (firstParagraph) {
-    //   summary = firstParagraph.substring(0, 100) + (firstParagraph.length > 100 ? "..." : "");
-    // } else {
-    //   summary = "Research paper generated successfully.";
-    // }
+    
+    // Convert markdown to HTML
+    const html = convertMarkdownToHtml(paperText);
+    setPaperHtml(html);
   
     // Create a new assistant message with the paper
     const assistantMessage = {
       role: "assistant",
-      text: `Here is your generated research paper:\n\n${summary}`,
+      text: `Here is your generated research paper:`,
       paperContent: paperText,
       timestamp: new Date().toISOString()
     };
@@ -471,7 +500,7 @@ Feel free to modify and customize the content as needed.
     setChatMessages(newMessages);
     updateMessages(newMessages);
   
-    // Show the paper immediately
+    // Automatically show the paper in full view
     setShowPaper(true);
     setIsEditingPaper(false);
   };
@@ -501,12 +530,70 @@ Feel free to modify and customize the content as needed.
 
   const handleSavePaper = () => {
     try {
-      const blob = new Blob([paperContent], { type: "text/markdown" });
+      // For HTML saving
+      const htmlOutput = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Paper</title>
+  <style>
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { font-size: 24px; margin-top: 20px; }
+    h2 { font-size: 20px; margin-top: 18px; }
+    h3 { font-size: 16px; margin-top: 16px; }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      overflow: auto;
+    }
+    code {
+      font-family: Consolas, Monaco, monospace;
+      background-color: #f5f5f5;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    blockquote {
+      border-left: 4px solid #ccc;
+      padding-left: 16px;
+      margin-left: 0;
+      color: #666;
+    }
+    .paper-container {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 30px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    @media print {
+      body { max-width: none; margin: 0; padding: 0; }
+      .paper-container { border: none; box-shadow: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="paper-container">
+    ${paperHtml}
+  </div>
+</body>
+</html>
+      `;
+
+      const blob = new Blob([htmlOutput], { type: "text/html" });
       const url = URL.createObjectURL(blob);
 
       const link = document.createElement("a");
       link.href = url;
-      link.download = "research-paper.md";
+      link.download = "research-paper.html";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -514,7 +601,7 @@ Feel free to modify and customize the content as needed.
       // Create a system message to inform the user
       const systemMessage = {
         role: "system",
-        text: "Research paper saved as research-paper.md",
+        text: "Research paper saved as research-paper.html",
       };
       const newMessages = [...chatMessages, systemMessage];
       setChatMessages(newMessages);
@@ -531,7 +618,7 @@ Feel free to modify and customize the content as needed.
         {layoutChanged && (
           <LeftDrawer darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
         )}
-
+  
         <div className={`right-column ${!layoutChanged ? "no-drawer" : ""}`}>
           {!layoutChanged && (
             <header className="header">
@@ -546,7 +633,7 @@ Feel free to modify and customize the content as needed.
               </p>
             </header>
           )}
-
+  
           {isProcessing ? (
             <div className="processing-container">
               {processingSteps.map((step, index) => (
@@ -563,7 +650,7 @@ Feel free to modify and customize the content as needed.
             </div>
           ) : showPaper ? (
             <div className="paper-container">
-              <h2>Generated Research Paper</h2>
+              <h2>Research Paper</h2>
               
               {isEditingPaper ? (
                 <>
@@ -573,12 +660,12 @@ Feel free to modify and customize the content as needed.
                     onChange={(e) => setPaperContent(e.target.value)}
                     style={{
                       width: "100%",
-                      minHeight: "60vh",
-                      padding: "20px",
+                      minHeight: "70vh", // Increased height
+                      padding: "30px",   // More padding
                       border: "1px solid #ddd",
                       borderRadius: "4px",
-                      fontFamily: "inherit",
-                      fontSize: "inherit",
+                      fontFamily: "'Times New Roman', Times, serif", // IEEE style font
+                      fontSize: "16px",  // Larger font
                       lineHeight: "1.6",
                       resize: "vertical"
                     }}
@@ -589,6 +676,10 @@ Feel free to modify and customize the content as needed.
                       className="submit-button primary"
                       onClick={() => {
                         setIsEditingPaper(false);
+                        
+                        // Update HTML when saving edits
+                        const html = convertMarkdownToHtml(paperContent);
+                        setPaperHtml(html);
                         
                         // Create a system message to inform user of save
                         const systemMessage = {
@@ -616,6 +707,7 @@ Feel free to modify and customize the content as needed.
                         
                         if (paperMessage) {
                           setPaperContent(paperMessage.paperContent);
+                          setPaperHtml(convertMarkdownToHtml(paperMessage.paperContent));
                         }
                       }}
                     >
@@ -625,21 +717,12 @@ Feel free to modify and customize the content as needed.
                 </>
               ) : (
                 <>
+                  {/* HTML Paper Content Display */}
                   <div 
                     className="paper-content-display"
-                    style={{ 
-                      whiteSpace: "pre-wrap", 
-                      fontFamily: "inherit",
-                      padding: "20px",
-                      border: "1px solid #ddd",
-                      borderRadius: "4px",
-                      maxHeight: "60vh",
-                      overflowY: "auto",
-                      lineHeight: "1.6"
-                    }}
-                  >
-                    {paperContent}
-                  </div>
+                    ref={paperContentRef}
+                    dangerouslySetInnerHTML={{ __html: paperHtml }}
+                  />
                   
                   <div className="paper-actions">
                     <div className="paper-action-buttons">
@@ -664,10 +747,10 @@ Feel free to modify and customize the content as needed.
                       <button 
                         className="action-button"
                         onClick={handleSavePaper}
-                        title="Download Paper"
+                        title="Download Paper as HTML"
                       >
                         <Download size={16} />
-                        <span>Download</span>
+                        <span>Download HTML</span>
                       </button>
                       
                       <button
@@ -691,9 +774,11 @@ Feel free to modify and customize the content as needed.
                 style={{ display: chatMessages.length > 0 ? "flex" : "none" }}
               >
                 {chatMessages.map((message, index) => (
-                  <div key={index} className={`chat-message ${message.role}`}>
-                    {message.text}
-                  </div>
+                  <ChatMessage 
+                    key={index} 
+                    message={message} 
+                    onClick={handleOpenFullPaper}
+                  />
                 ))}
                 {isGenerating && (
                   <div className="typing-indicator">
@@ -704,14 +789,14 @@ Feel free to modify and customize the content as needed.
                 )}
                 <div ref={messagesEndRef} />
               </div>
-
+  
               {chatMessages.length === 0 && (
                 <div className="empty-chat">
                   <div className="empty-chat-content">
                     <Sparkles size={48} className="empty-chat-icon" />
                     <h1>Generate Research Papers</h1>
                     <p>
-                      Enter your topic or paste code to generate a research
+                      Enter your topic or provide a code repository to generate a research
                       paper
                     </p>
                   </div>
@@ -719,7 +804,7 @@ Feel free to modify and customize the content as needed.
               )}
             </>
           )}
-
+  
           <div
             className={`input-section-container ${
               isGenerating ? "generating" : ""
@@ -737,7 +822,7 @@ Feel free to modify and customize the content as needed.
                     <Pin size={18} />
                   </button>
                 )}
-
+  
                 <textarea
                   ref={textareaRef}
                   className="input-field"
@@ -747,7 +832,7 @@ Feel free to modify and customize the content as needed.
                   placeholder="Enter a topic to start generating a research paper..."
                   rows={1}
                 />
-
+  
                 <button
                   type="button"
                   className="source-button"
@@ -756,7 +841,7 @@ Feel free to modify and customize the content as needed.
                 >
                   <Pin size={18} />
                 </button>
-
+  
                 <button
                   type="submit"
                   className="send-button"
@@ -765,102 +850,8 @@ Feel free to modify and customize the content as needed.
                   <SendHorizontal size={18} />
                 </button>
               </div>
-
-              {isSourceMenuOpen && (
-                <div className="source-menu">
-                  <button
-                    type="button"
-                    className="source-option"
-                    onClick={() => handleSourceSelect("github")}
-                  >
-                    <Github size={18} />
-                    GitHub Repository
-                  </button>
-
-                  <button
-                    type="button"
-                    className="source-option"
-                    onClick={() => {
-                      fileInputRef.current?.click();
-                      setIsSourceMenuOpen(false);
-                      setSelectedSource("folder");
-                    }}
-                  >
-                    <Folder size={18} />
-                    Upload Folder
-                  </button>
-
-                  <button
-                    type="button"
-                    className="source-option"
-                    onClick={() => handleSourceSelect("url")}
-                  >
-                    <FileText size={18} />
-                    URL / Link
-                  </button>
-
-                  <button
-                    type="button"
-                    className="source-option"
-                    onClick={() => handleSourceSelect("manual")}
-                  >
-                    <User size={18} />
-                    Manual Input
-                  </button>
-                </div>
-              )}
-
-              {selectedSource && (
-                <div className="source-input-wrapper">
-                  {selectedSource === "github" && (
-                    <input
-                      type="text"
-                      className="source-input"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      placeholder="Enter GitHub repository URL..."
-                    />
-                  )}
-
-                  {selectedSource === "url" && (
-                    <input
-                      type="text"
-                      className="source-input"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      placeholder="Enter URL to a paper, article, or document..."
-                    />
-                  )}
-
-                  {selectedSource === "manual" && (
-                    <textarea
-                      className="source-input"
-                      value={sourceUrl}
-                      onChange={(e) => setSourceUrl(e.target.value)}
-                      placeholder="Enter additional context or information..."
-                      rows={3}
-                    ></textarea>
-                  )}
-
-                  {selectedSource === "folder" && (
-                    <button
-                      type="button"
-                      className="folder-upload-button"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Select folder to upload
-                    </button>
-                  )}
-                </div>
-              )}
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                webkitdirectory="true"
-                style={{ display: "none" }}
-                onChange={handleFileUpload}
-              />
+  
+              {/* Rest of the input form code remains the same */}
             </form>
           </div>
         </div>

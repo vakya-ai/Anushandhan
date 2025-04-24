@@ -1,0 +1,216 @@
+/* ResearchPaperStyles.css */
+
+/* Paper container styling */
+.paper-container {
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+  }
+  
+  .paper-container h2 {
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #333;
+    text-align: center;
+  }
+  
+  /* HTML Paper Content Styling */
+  .paper-content-display {
+    font-family: 'Times New Roman', Times, serif;
+    line-height: 1.6;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+    background-color: #fff;
+  }
+  
+  /* IEEE Paper Formatting */
+  .paper-content-display h1 {
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    margin: 16px 0;
+  }
+  
+  .paper-content-display h2 {
+    font-size: 16px;
+    font-weight: bold;
+    margin: 14px 0;
+    text-align: left;
+  }
+  
+  .paper-content-display h3 {
+    font-size: 14px;
+    font-weight: bold;
+    margin: 12px 0;
+  }
+  
+  .paper-content-display p {
+    margin: 10px 0;
+    text-align: justify;
+  }
+  
+  .paper-content-display ul, 
+  .paper-content-display ol {
+    margin: 10px 0;
+    padding-left: 20px;
+  }
+  
+  .paper-content-display li {
+    margin-bottom: 5px;
+  }
+  
+  .paper-content-display blockquote {
+    border-left: 3px solid #ccc;
+    padding-left: 15px;
+    margin: 10px 0;
+    color: #555;
+  }
+  
+  /* Code blocks */
+  .paper-content-display pre {
+    background-color: #f5f5f5;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 10px 0;
+  }
+  
+  .paper-content-display code {
+    font-family: Consolas, Monaco, 'Andale Mono', monospace;
+    font-size: 13px;
+    background-color: #f5f5f5;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+  
+  /* Style for the paper actions section */
+  .paper-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+  }
+  
+  .paper-action-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  
+  .action-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background-color: #f0f0f0;
+    color: #333;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  
+  .action-button:hover {
+    background-color: #e0e0e0;
+  }
+  
+  .action-button.primary {
+    background-color: #4a6fa5;
+    color: white;
+  }
+  
+  .action-button.primary:hover {
+    background-color: #3a5a8a;
+  }
+  
+  .action-button.secondary {
+    background-color: #6c757d;
+    color: white;
+  }
+  
+  .action-button.secondary:hover {
+    background-color: #5a6268;
+  }
+  
+  /* Paper editor styles */
+  .paper-content-editor {
+    width: 100%;
+    min-height: 60vh;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 14px;
+    line-height: 1.6;
+    resize: vertical;
+  }
+  
+  /* Dark mode styles */
+  .dark-mode .paper-container {
+    background-color: #2d2d2d;
+  }
+  
+  .dark-mode .paper-container h2 {
+    color: #e0e0e0;
+  }
+  
+  .dark-mode .paper-content-display {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #444;
+  }
+  
+  .dark-mode .paper-content-editor {
+    background-color: #2d2d2d;
+    color: #e0e0e0;
+    border-color: #444;
+  }
+  
+  .dark-mode .action-button {
+    background-color: #444;
+    color: #e0e0e0;
+  }
+  
+  .dark-mode .action-button:hover {
+    background-color: #555;
+  }
+  
+  .dark-mode .action-button.primary {
+    background-color: #5a7fb5;
+  }
+  
+  .dark-mode .action-button.secondary {
+    background-color: #7c858d;
+  }
+  
+  /* Print-friendly styles */
+  @media print {
+    .paper-container {
+      box-shadow: none;
+      padding: 0;
+      margin: 0;
+      max-height: none;
+    }
+    
+    .paper-content-display {
+      border: none;
+      padding: 0;
+      max-height: none;
+      overflow: visible;
+    }
+    
+    .paper-actions,
+    header,
+    .input-section-container,
+    .left-drawer {
+      display: none !important;
+    }
+  }
