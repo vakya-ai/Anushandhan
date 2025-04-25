@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="AcademAI API")
 
+from app.api.research_generator import router as research_router
+app.include_router(research_router, prefix="/api/research_generator")
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -54,26 +57,26 @@ paper_jobs = {}
 async def generate_paper_content(topic, sections, word_count, source_type=None, source_url=None):
     """Generate paper content based on the topic and optional source URL."""
     try:
-        # If GitHub URL is provided, use GitHub repository analysis
-        if source_type == "github" and source_url:
-            from app.services.paper_generator import GitHubPaperGenerator
-            generator = GitHubPaperGenerator()
-            return await generator.generate_research_paper(topic, source_url, sections)
-        else:
-            # Default generation for other cases (basic template)
-            paper_content = f"""# {topic}
-
-## Abstract
-This paper explores {topic} in depth, providing insights and analysis.
-
-"""
-            # Add each section
-            for section in sections:
-                paper_content += f"\n## {section}\n"
-                paper_content += f"Content for {section} related to {topic}. This section would typically contain relevant information about {topic}.\n"
-            
-            return paper_content
+        # Import the ResearchPaperGenerator from research_generator.py
+        from app.api.research_generator import ResearchPaperGenerator
+        
+        # Create an instance of the research paper generator
+        generator = ResearchPaperGenerator()
+        
+        # Generate the paper using the generator
+        paper_result = await generator.generate_research_paper(
+            topic=topic,
+            sections=sections,
+            word_count=word_count,
+            repo_url=source_url if source_type == "github" else None
+        )
+        
+        # Return the full paper content
+        return paper_result.get("Full Paper", "Error generating paper content")
+        
     except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
         logger.error(f"Error in generate_paper_content: {str(e)}")
         # Return a basic paper with error information for debugging
         return f"""# Error Generating Complete Paper for {topic}
@@ -89,7 +92,6 @@ This paper was intended to explore {topic} in depth.
 
 ### Introduction
 The introduction would provide background on {topic}.
-
 """
 
 # Background task to generate paper

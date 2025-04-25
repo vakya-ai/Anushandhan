@@ -9,6 +9,22 @@ import aiohttp
 class GitHubProcessor:
     """Service for processing GitHub repositories"""
     
+    def safe_rmtree(self, path):
+        """Safely remove a directory tree, ignoring permission errors on Windows."""
+        def onerror(func, error_path, exc_info):
+            # Try to make the file writable and try again
+            try:
+                os.chmod(error_path, 0o777)
+                func(error_path)
+            except:
+                # If still failing, just ignore
+                pass
+        
+        try:
+            shutil.rmtree(path, onerror=onerror)
+        except Exception as e:
+            print(f"Warning: Could not fully remove directory {path}: {str(e)}")
+    
     async def clone_repository(self, repo_url: str, branch: str = "main") -> str:
         """
         Clone a GitHub repository to a temporary directory
@@ -23,25 +39,29 @@ class GitHubProcessor:
         temp_dir = tempfile.mkdtemp()
         
         try:
-            # Use asyncio subprocess to avoid blocking
-            process = await asyncio.create_subprocess_exec(
-                "git", "clone", "--branch", branch, "--single-branch", repo_url, temp_dir,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            # Use regular subprocess called from a thread pool
+            def clone_repo():
+                result = subprocess.run(
+                    ["git", "clone", repo_url, temp_dir],
+                    capture_output=True,
+                    text=True
+                )
+                return result
+                
+            # Run in a thread pool to avoid blocking
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, clone_repo)
             
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                raise Exception(f"Failed to clone repository: {stderr.decode()}")
+            if result.returncode != 0:
+                raise Exception(f"Failed to clone repository: {result.stderr}")
                 
             return temp_dir
             
         except Exception as e:
             # Clean up on error
             if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
-            raise e
+                self.safe_rmtree(temp_dir)
+            raise Exception(f"Repository cloning error: {str(e)}")
     
     async def read_repository_files(self, repo_path: str) -> Dict[str, str]:
         """

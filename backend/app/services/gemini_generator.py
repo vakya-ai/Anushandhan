@@ -154,19 +154,17 @@ class GeminiGenerator:
     async def _generate_with_gemini(self, system_prompt: str, user_prompt: str) -> str:
         """
         Call Gemini API with system and user prompts
-        
-        This is a placeholder for the actual implementation that would use the Gemini API
         """
         try:
             print(f"Gemini API call with system prompt: {system_prompt}")
             print(f"Gemini API call with user prompt: {user_prompt}")
+
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+
             # In an async context, we need to run the Gemini call in a thread pool
             response = await asyncio.to_thread(
                 self.model.generate_content,
-                [
-                    {"role": "system", "parts": [system_prompt]},
-                    {"role": "user", "parts": [user_prompt]}
-                ]
+                [combined_prompt]
             )
             print(f"Gemini API response: {response}")
         

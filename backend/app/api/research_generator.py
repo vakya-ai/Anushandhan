@@ -149,9 +149,13 @@ class ResearchPaperGenerator:
                             )
                             
                 finally:
-                    # Clean up temporary directory
-                    if os.path.exists(repo_path):
-                        shutil.rmtree(repo_path)
+    # Clean up temporary directory
+                        if os.path.exists(repo_path):
+                                try:
+            # Use the github_processor's safe_rmtree method
+                                    self.github_processor.safe_rmtree(repo_path)
+                                except Exception as cleanup_error:
+                                 logger.warning(f"Failed to clean up temporary directory: {str(cleanup_error)}")
             else:
                 # Generate a research paper based only on the topic
                 logger.info(f"Generating research paper based only on topic (no repository): {topic}")
@@ -252,7 +256,9 @@ class ResearchPaperGenerator:
             return formatted_result
             
         except Exception as e:
-            logger.error(f"Error generating research paper: {str(e)}")
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"Error generating research paper: {str(e)}\n{error_traceback}")
             raise
 
 # Initialize the generator
