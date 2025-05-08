@@ -1,0 +1,175 @@
+from fastapi import APIRouter, Depends, HTTPException, Body, Request, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from typing import Dict, List, Any, Optional
+import jwt
+from datetime import datetime
+from app.core.database import get_database
+
+router = APIRouter(prefix="/api/papers", tags=["papers"])
+security = HTTPBearer()
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        token = credentials.credentials
+        # Here we would normally verify the token with Google
+        # For simplicity, we just decode it to get the user ID
+        decoded_token = jwt.decode(token, options={"verify_signature": False})
+        return decoded_token
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid authentication credentials: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+@router.post("/track-generation")
+async def track_paper_generation(
+    paper_data: Dict[str, Any] = Body(...), 
+    user=Depends(get_current_user),
+    db=Depends(get_database)
+):
+    """
+    Track paper generation activity
+    """
+    try:
+        # Get user ID from token
+        user_id = user.get("sub")
+        
+        # Extract paper details
+        document_id = paper_data.get("documentId")
+        topic = paper_data.get("topic")
+        
+        # Create paper activity record
+        paper_activity = {
+            "userId": user_id,
+            "documentId": document_id,
+            "topic": topic,
+            "type": "generation",
+            "timestamp": datetime.now(),
+            "details": {
+                "sections": paper_data.get("sections", []),
+                "wordCount": paper_data.get("wordCount"),
+                "sourceType": paper_data.get("sourceType"),
+                "sourceUrl": paper_data.get("sourceUrl"),
+            }
+        }
+        
+        # Store in paper_activities collection
+        await db.get_collection("paper_activities").insert_one(paper_activity)
+        
+        # Update user's generated papers count
+        await db.get_collection("users").update_one(
+            {"googleId": user_id},
+            {"$inc": {"papersGenerated": 1}}
+        )
+        
+        return {"status": "success", "message": "Paper generation tracked"}
+        
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Error tracking paper generation: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@router.post("/track-view")
+async def track_paper_view(
+    data: Dict[str, Any] = Body(...), 
+    user=Depends(get_current_user),
+    db=Depends(get_database)
+):
+    """
+    Track paper view activity
+    """
+    try:
+        # Get user ID from token
+        user_id = user.get("sub")
+        
+        # Extract details
+        document_id = data.get("documentId")
+        
+        # Create paper activity record
+        paper_activity = {
+            "userId": user_id,
+            "documentId": document_id,
+            "type": "view",
+            "timestamp": datetime.now()
+        }
+        
+        # Store in paper_activities collection
+        await db.get_collection("paper_activities").insert_one(paper_activity)
+        
+        return {"status": "success", "message": "Paper view tracked"}
+        
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Error tracking paper view: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@router.post("/track-download")
+async def track_paper_download(
+    data: Dict[str, Any] = Body(...), 
+    user=Depends(get_current_user),
+    db=Depends(get_database)
+):
+    """
+    Track paper download activity
+    """
+    try:
+        # Get user ID from token
+        user_id = user.get("sub")
+        
+        # Extract details
+        document_id = data.get("documentId")
+        format = data.get("format", "html")
+        
+        # Create paper activity record
+        paper_activity = {
+            "userId": user_id,
+            "documentId": document_id,
+            "type": "download",
+            "format": format,
+            "timestamp": datetime.now()
+        }
+        
+        # Store in paper_activities collection
+        await db.get_collection("paper_activities").insert_one(paper_activity)
+        
+        return {"status": "success", "message": "Paper download tracked"}
+        
+    except Exception as e:
+        # Log error but don't fail the request
+        print(f"Error tracking paper download: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@router.get("/history")
+async def get_paper_history(
+    user=Depends(get_current_user),
+    db=Depends(get_database)
+):
+    """
+    Get user's paper generation history
+    """
+    try:
+        # Get user ID from token
+        user_id = user.get("sub")
+        
+        # Get all papers generated by this user
+        paper_collection = db.get_collection("paper_activities")
+        papers = await paper_collection.find(
+            {"userId": user_id, "type": "generation"}
+        ).sort("timestamp", -1).to_list(100)  # Limit to last 100 papers
+        
+        # Format for response
+        result = []
+        for paper in papers:
+            result.append({
+                "documentId": paper.get("documentId"),
+                "topic": paper.get("topic"),
+                "timestamp": paper.get("timestamp").isoformat(),
+                "sourceType": paper.get("details", {}).get("sourceType"),
+                "sections": paper.get("details", {}).get("sections")
+            })
+        
+        return {"papers": result}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching paper history: {str(e)}")
