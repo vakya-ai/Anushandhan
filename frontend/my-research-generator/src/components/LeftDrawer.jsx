@@ -15,18 +15,35 @@ import {
 } from 'lucide-react';
 import './LeftDrawer.css';
 import PropTypes from 'prop-types';
+import AuthService from '../services/AuthService';
+import ActivityService from '../services/ActivityService';
 
 const LeftDrawer = ({ darkMode, toggleDarkMode }) => {
   const [isOpen, setIsOpen] = useState(true);
   const { chats, selectedChatId, selectChat, addChat, deleteChat } = useChatHistory();
   const [userData, setUserData] = useState(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(null);
 
-  // Load user data from localStorage
+  // Load user data on component mount
   useEffect(() => {
-    const savedUserData = localStorage.getItem('userData');
-    if (savedUserData) {
-      setUserData(JSON.parse(savedUserData));
-    }
+    const loadUserData = () => {
+      // Check if user is authenticated
+      if (AuthService.isAuthenticated()) {
+        const user = AuthService.getCurrentUser();
+        setUserData(user);
+      } else {
+        setUserData(null);
+      }
+    };
+    
+    loadUserData();
+    
+    // Set up an interval to check authentication status
+    const authInterval = setInterval(loadUserData, 5 * 60 * 1000); // Check every 5 minutes
+    
+    return () => {
+      if (authInterval) clearInterval(authInterval);
+    };
   }, []);
 
   const toggleDrawer = () => {
@@ -35,34 +52,72 @@ const LeftDrawer = ({ darkMode, toggleDarkMode }) => {
 
   const handleSelectChat = (chatId) => {
     selectChat(chatId);
+    
+    // Track chat selection if user is authenticated
+    if (userData) {
+      ActivityService.trackActivity('select_chat', { chatId });
+    }
   };
 
   const handleNewChat = () => {
+    // Reset any pending delete confirmation
+    setIsConfirmingDelete(null);
+    
+    // Create a new chat with a default title
     const newChatId = addChat("New Chat");
     selectChat(newChatId);
+    
+    // Track new chat creation if user is authenticated
+    if (userData) {
+      ActivityService.trackNewChat(newChatId, "New Chat");
+    }
+    
     // Force a complete state reset to ensure new chat is fresh
-  setTimeout(() => {
-    // This will trigger the useEffect in ResearchPaperGenerator that resets the state
-    selectChat(newChatId);
-  }, 0);
+    setTimeout(() => {
+      // This will trigger the useEffect in ResearchPaperGenerator that resets the state
+      selectChat(newChatId);
+    }, 0);
   };
 
   const handleDeleteChat = (e, chatId) => {
     e.stopPropagation(); // Prevent triggering chat selection
-    deleteChat(chatId);
-
-    if (window.confirm("Are you sure you want to delete this chat?")) {
+    
+    // If we're already confirming for this chat, proceed with deletion
+    if (isConfirmingDelete === chatId) {
+      // Delete the chat
       deleteChat(chatId);
+      
+      // Track chat deletion if user is authenticated
+      if (userData) {
+        ActivityService.trackDeleteChat(chatId);
+      }
+      
+      // Reset confirmation state
+      setIsConfirmingDelete(null);
+    } else {
+      // Set this chat for confirmation
+      setIsConfirmingDelete(chatId);
+      
+      // Auto-reset after 3 seconds if no action
+      setTimeout(() => {
+        setIsConfirmingDelete(prev => prev === chatId ? null : prev);
+      }, 3000);
     }
   };
 
-  const handleLogout = () => {
-    // Clear user data from local storage
-    localStorage.removeItem('userData');
-    localStorage.removeItem('userToken');
-    // Reset user data state
-    setUserData(null);
-    // You might want to redirect to login page or show login UI
+  const handleLogout = async () => {
+    try {
+      // Use AuthService to handle logout properly
+      await AuthService.logout();
+      
+      // Reset user data state
+      setUserData(null);
+      
+      // Force page reload to reset application state
+      window.location.reload();
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
 
   const formatDate = (timestamp) => {
@@ -123,10 +178,14 @@ const LeftDrawer = ({ darkMode, toggleDarkMode }) => {
                       <div className="chat-date">{formatDate(chat.createdAt)}</div>
                     </div>
                     <button 
-                      className="delete-chat-button"
+                      className={`delete-chat-button ${isConfirmingDelete === chat.id ? 'confirming' : ''}`}
                       onClick={(e) => handleDeleteChat(e, chat.id)}
                     >
-                      <Trash2 size={16} />
+                      {isConfirmingDelete === chat.id ? (
+                        <span className="confirm-text">Confirm?</span>
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
                     </button>
                   </>
                 ) : (

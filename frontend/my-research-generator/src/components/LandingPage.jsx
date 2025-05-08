@@ -1,46 +1,44 @@
 // src/components/LandingPage.jsx
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { motion } from 'framer-motion';
 import { GoogleLogin } from '@react-oauth/google';
 import { FileText, Code, Lock, Zap, Globe, UserCheck } from 'lucide-react';
 import './LandingPage.css';
+import AuthService from '../services/AuthService';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+  
   const [ref, inView] = useInView({
     threshold: 0.1,
     triggerOnce: true,
   });
 
-  const handleGoogleSuccess = (credentialResponse) => {
-    console.log('Google Auth Success:', credentialResponse);
-    // Store user info in localStorage for persistence
-    localStorage.setItem('userToken', credentialResponse.credential);
-    
-    // Decode the JWT to get user information
+  const handleGoogleSuccess = async (credentialResponse) => {
     try {
-      const base64Url = credentialResponse.credential.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
-        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-      }).join(''));
+      setIsLoggingIn(true);
+      setLoginError(null);
       
-      const userData = JSON.parse(jsonPayload);
-      localStorage.setItem('userData', JSON.stringify({
-        name: userData.name,
-        email: userData.email,
-        picture: userData.picture
-      }));
-    } catch (e) {
-      console.error('Error decoding JWT:', e);
+      // Process Google login via our AuthService
+      await AuthService.handleGoogleLogin(credentialResponse);
+      
+      // Navigate to generator page on success
+      navigate('/generator');
+    } catch (error) {
+      console.error('Google Auth Error:', error);
+      setLoginError('Login failed. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
     }
-    
-    navigate('/generator');
   };
 
   const handleGoogleError = () => {
-    console.log('Google Auth Error');
+    console.error('Google Auth Error');
+    setLoginError('Failed to connect with Google. Please try again later.');
   };
 
   const features = [
@@ -115,6 +113,12 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.8 }}
           >
+            {loginError && (
+              <div className="login-error">
+                {loginError}
+              </div>
+            )}
+            
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={handleGoogleError}
@@ -123,12 +127,15 @@ const LandingPage = () => {
               size="large"
               text="signin_with"
               shape="rectangular"
-              render={({ onClick }) => (
-                <button className="primary-button" onClick={onClick}>
-                  Get Started
-                </button>
-              )}
+              disabled={isLoggingIn}
             />
+            
+            {isLoggingIn && (
+              <div className="login-loader">
+                <div className="spinner"></div>
+                <span>Connecting to your account...</span>
+              </div>
+            )}
           </motion.div>
         </div>
 
@@ -197,6 +204,19 @@ const LandingPage = () => {
       >
         <h2>Ready to Generate Your Research Paper?</h2>
         <p>Join thousands of researchers who save time with AI-powered paper generation.</p>
+        
+        <div className="cta-buttons">
+          <GoogleLogin
+            onSuccess={handleGoogleSuccess}
+            onError={handleGoogleError}
+            useOneTap
+            theme="filled_blue"
+            size="large"
+            text="continue_with"
+            shape="rectangular"
+            disabled={isLoggingIn}
+          />
+        </div>
       </motion.section>
     </div>
   );
