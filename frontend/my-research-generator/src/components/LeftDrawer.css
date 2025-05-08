@@ -344,3 +344,66 @@
     transform: translateX(-100%);
   }
 }
+
+.delete-chat-button.confirming {
+  background-color: #ff3b30;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  animation: pulse 1s infinite;
+}
+
+.delete-chat-button.confirming:hover {
+  background-color: #d63030;
+}
+
+.confirm-text {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* Improve chat title styling */
+.chat-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  font-weight: 500;
+}
+
+/* Improve empty state */
+.no-chats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: #888;
+  font-size: 14px;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  margin: 12px;
+}
+
+/* Dark mode adjustments */
+.dark-mode .delete-chat-button.confirming {
+  background-color: #ff453a;
+}
+
+.dark-mode .no-chats {
+  border-color: #444;
+  color: #aaa;
+}
