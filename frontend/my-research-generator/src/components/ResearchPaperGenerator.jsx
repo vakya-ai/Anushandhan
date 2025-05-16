@@ -9,10 +9,11 @@ import {
   Github,
   SendHorizontal,
   Edit,
-  Download,
   Copy,
   MessageSquare,
-  X
+  X,
+  FileDown,
+  File,
 } from "lucide-react";
 import { useChatHistory } from "../context/ChatHistoryContext.jsx";
 import LeftDrawer from "./LeftDrawer";
@@ -20,20 +21,29 @@ import ChatMessage from "./ChatMessage";
 import "./ResearchPaperGenerator.css";
 import "./ResearchPaperStyles.css";
 import "./ChatMessageStyles.css";
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import AuthService from "../services/AuthService";
+import ActivityService from "../services/ActivityService";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+import { saveAs } from "file-saver";
 
 // Configure marked with better defaults
 marked.setOptions({
   breaks: true,
   gfm: true,
-  headerIds: true
+  headerIds: true,
 });
 
 const ResearchPaperGenerator = () => {
   // Access chat history context
-  const { addChat, updateMessages, getCurrentChat, selectedChatId, selectChat } =
-    useChatHistory();
+  const {
+    addChat,
+    updateMessages,
+    updateChatTitle,
+    getCurrentChat,
+    selectedChatId,
+    selectChat,
+  } = useChatHistory();
 
   // All state and refs
   const [isProcessing, setIsProcessing] = useState(false);
@@ -44,8 +54,11 @@ const ResearchPaperGenerator = () => {
   const [paperHtml, setPaperHtml] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [layoutChanged, setLayoutChanged] = useState(false);
-  const [, setError] = useState(null);
+  const [error, setError] = useState(null);
   const [darkMode, setDarkMode] = useState(false);
+  // Check if user is authenticated
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userData, setUserData] = useState(null);
 
   // Input Section states
   const [showGithubInput, setShowGithubInput] = useState(false);
@@ -73,19 +86,220 @@ const ResearchPaperGenerator = () => {
 
   // Function to convert markdown to HTML
   const convertMarkdownToHtml = (markdown) => {
-    if (!markdown) return '';
-    
+    if (!markdown) return "";
+
     try {
       // Convert markdown to HTML
       const rawHtml = marked.parse(markdown);
-      
+
       // Sanitize HTML to prevent XSS attacks
       const sanitizedHtml = DOMPurify.sanitize(rawHtml);
-      
+
       return sanitizedHtml;
     } catch (error) {
-      console.error('Error converting markdown to HTML:', error);
+      console.error("Error converting markdown to HTML:", error);
       return `<p>Error rendering content: ${error.message}</p>`;
+    }
+  };
+
+  // Function to handle HTML download
+  const handleHtmlDownload = () => {
+    try {
+      // For HTML saving
+      const htmlOutput = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${getCurrentChat()?.topic || "Research Paper"}</title>
+  <style>
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { font-size: 24px; margin-top: 20px; }
+    h2 { font-size: 20px; margin-top: 18px; }
+    h3 { font-size: 16px; margin-top: 16px; }
+    pre {
+      background-color: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      overflow: auto;
+    }
+    code {
+      font-family: Consolas, Monaco, monospace;
+      background-color: #f5f5f5;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+    blockquote {
+      border-left: 4px solid #ccc;
+      padding-left: 16px;
+      margin-left: 0;
+      color: #666;
+    }
+    .paper-container {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 30px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    @media print {
+      body { max-width: none; margin: 0; padding: 0; }
+      .paper-container { border: none; box-shadow: none; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="paper-container">
+    ${paperHtml}
+  </div>
+</body>
+</html>
+      `;
+
+      const blob = new Blob([htmlOutput], { type: "text/html" });
+      saveAs(blob, `research-paper-${Date.now()}.html`);
+
+      // Find paper's document ID if available
+      const paperMessage = chatMessages.find(
+        (msg) => msg.role === "assistant" && msg.paperContent
+      );
+      const documentId = paperMessage?.documentId;
+
+      // Track download if user is authenticated
+      if (isAuthenticated && userData && documentId) {
+        ActivityService.trackPaperDownload(documentId, "html");
+      }
+
+      // Create a system message to inform the user
+      const systemMessage = {
+        role: "system",
+        text: "Research paper saved as HTML",
+      };
+      const newMessages = [...chatMessages, systemMessage];
+      setChatMessages(newMessages);
+      updateMessages(newMessages);
+    } catch (error) {
+      console.error("Error saving paper as HTML:", error);
+      setError("Failed to save paper: " + error.message);
+    }
+  };
+
+  // Function to handle DOCX download
+  const handleDocxDownload = async () => {
+    try {
+      // Get the paper title from current chat
+      const title = getCurrentChat()?.topic || "Research Paper";
+
+      // Create a full HTML document
+      const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+        body { font-family: 'Times New Roman', Times, serif; line-height: 1.6; margin: 1in; }
+        h1 { font-size: 16pt; font-weight: bold; margin-top: 12pt; text-align: center; }
+        h2 { font-size: 14pt; font-weight: bold; margin-top: 10pt; }
+        h3 { font-size: 12pt; font-weight: bold; margin-top: 8pt; }
+        p { font-size: 12pt; margin: 6pt 0; }
+        blockquote { margin-left: 24pt; font-style: italic; }
+        code { font-family: 'Courier New', monospace; }
+        .ieee-paper { max-width: 8.5in; }
+    </style>
+</head>
+<body>
+    <div class="ieee-paper">
+        ${paperHtml}
+    </div>
+</body>
+</html>
+      `;
+
+      // Create a blob
+      const blob = new Blob([fullHtml], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      });
+
+      // Save the file
+      saveAs(blob, `${title.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.docx`);
+
+      // Find paper's document ID if available
+      const paperMessage = chatMessages.find(
+        (msg) => msg.role === "assistant" && msg.paperContent
+      );
+      const documentId = paperMessage?.documentId;
+
+      // Track download if user is authenticated
+      if (isAuthenticated && userData && documentId) {
+        ActivityService.trackPaperDownload(documentId, "docx");
+      }
+
+      // Create a system message to inform the user
+      const systemMessage = {
+        role: "system",
+        text: "Research paper saved as DOCX",
+      };
+      const newMessages = [...chatMessages, systemMessage];
+      setChatMessages(newMessages);
+      updateMessages(newMessages);
+    } catch (error) {
+      console.error("Error saving paper as DOCX:", error);
+      setError("Failed to save paper as DOCX: " + error.message);
+
+      // Try fallback method
+      try {
+        const title = getCurrentChat()?.topic || "Research Paper";
+
+        // Simple fallback conversion
+        const fullHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+        body { font-family: 'Times New Roman', Times, serif; line-height: 1.6; }
+        h1 { font-size: 16pt; font-weight: bold; }
+        h2 { font-size: 14pt; font-weight: bold; }
+        p { font-size: 12pt; }
+    </style>
+</head>
+<body>
+    ${paperHtml}
+</body>
+</html>
+        `;
+
+        const blob = new Blob([fullHtml], {
+          type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        });
+        saveAs(
+          blob,
+          `${title.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}.docx`
+        );
+
+        // Create a system message to inform the user
+        const systemMessage = {
+          role: "system",
+          text: "Research paper saved as DOCX (fallback method)",
+        };
+        const newMessages = [...chatMessages, systemMessage];
+        setChatMessages(newMessages);
+        updateMessages(newMessages);
+      } catch (fallbackError) {
+        console.error("Fallback DOCX conversion failed:", fallbackError);
+        setError(
+          "All DOCX conversion methods failed. Please try HTML format instead."
+        );
+      }
     }
   };
 
@@ -105,6 +319,21 @@ const ResearchPaperGenerator = () => {
     } else {
       document.body.classList.remove("dark-mode");
     }
+  };
+
+  // Extract a good chat title from the first user message
+  const generateChatTitle = (message) => {
+    // Clean up the message text
+    const cleanMessage = message
+      .replace(/\n/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Take up to 50 characters for the title
+    const title =
+      cleanMessage.substring(0, 50) + (cleanMessage.length > 50 ? "..." : "");
+
+    return title;
   };
 
   // Initialize dark mode from localStorage
@@ -136,12 +365,12 @@ const ResearchPaperGenerator = () => {
   useEffect(() => {
     if (selectedChatId) {
       const currentChat = getCurrentChat();
-      
+
       // Reset messages
       if (currentChat) {
         setChatMessages(currentChat.messages || []);
         setLayoutChanged(true);
-        
+
         // Check if this is a new chat with no messages
         if (currentChat.messages.length === 0) {
           // Reset all UI state for a fresh chat
@@ -216,20 +445,49 @@ const ResearchPaperGenerator = () => {
     const stepInterval = stepIntervalRef.current;
     const messageInterval = messageIntervalRef.current;
     const pollInterval = pollIntervalRef.current;
-  
+
     return () => {
       if (stepInterval) clearInterval(stepInterval);
       if (messageInterval) clearInterval(messageInterval);
       if (pollInterval) clearInterval(pollInterval);
     };
   }, []);
-  
+
+  // Check authentication status on component mount
+  useEffect(() => {
+    const checkAuth = () => {
+      const isAuth = AuthService.isAuthenticated();
+      setIsAuthenticated(isAuth);
+
+      if (isAuth) {
+        const user = AuthService.getCurrentUser();
+        setUserData(user);
+      } else {
+        setUserData(null);
+      }
+    };
+
+    checkAuth();
+
+    // Set up auth check interval (for token expiration)
+    const authInterval = setInterval(checkAuth, 5 * 60 * 1000); // Check every 5 minutes
+
+    return () => {
+      if (authInterval) clearInterval(authInterval);
+    };
+  }, []);
+
   // Add the missing handleOpenFullPaper function
   const handleOpenFullPaper = (message) => {
     if (message.paperContent) {
       setPaperContent(message.paperContent);
       setPaperHtml(convertMarkdownToHtml(message.paperContent));
       setShowPaper(true);
+
+      // Track paper view if user is authenticated
+      if (isAuthenticated && userData && message.documentId) {
+        ActivityService.trackPaperView(message.documentId);
+      }
     }
   };
 
@@ -251,10 +509,28 @@ const ResearchPaperGenerator = () => {
 
     // Create a new chat if none is selected
     if (!selectedChatId) {
-      const cleanInput = inputValue.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-      const chatTopic = cleanInput.substring(0, 50) + (cleanInput.length > 50 ? "..." : "");
+      const chatTopic = generateChatTitle(inputValue);
       const newChatId = addChat(chatTopic);
       selectChat(newChatId);
+
+      // Track new chat creation if user is authenticated
+      if (isAuthenticated && userData) {
+        ActivityService.trackNewChat(newChatId, chatTopic);
+      }
+    } else {
+      // If this is the first message, update the chat title
+      const currentChat = getCurrentChat();
+      if (
+        currentChat &&
+        (!currentChat.messages || currentChat.messages.length === 0)
+      ) {
+        const chatTopic = generateChatTitle(inputData.prompt);
+        if (typeof updateChatTitle === "function") {
+          updateChatTitle(selectedChatId, chatTopic);
+        } else {
+          console.warn("updateChatTitle function is not defined.");
+        }
+      }
     }
 
     // Call the API integration function
@@ -352,15 +628,21 @@ const ResearchPaperGenerator = () => {
 
       console.log("Sending request data:", JSON.stringify(requestData));
 
+      // Add authentication header if user is logged in
+      const headers = {
+        "Content-Type": "application/json",
+      };
+
+      if (isAuthenticated && userData) {
+        headers["Authorization"] = `Bearer ${userData.token}`;
+      }
+
       // Make API call to the backend
       const response = await fetch("/api/research/generate-paper", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(requestData),
       });
-
       if (!response.ok) {
         console.error(
           "Server response not OK:",
@@ -418,7 +700,7 @@ const ResearchPaperGenerator = () => {
               pollIntervalRef.current = null;
 
               if (statusData.paper) {
-                handlePaperGenerated(statusData.paper, inputData.prompt);
+                handlePaperGenerated(statusData.paper, documentId);
               } else {
                 setError("Paper content is empty");
                 const errorMessages = [
@@ -463,7 +745,7 @@ const ResearchPaperGenerator = () => {
       } else if (data.status === "success") {
         // Paper was generated immediately
         if (data.paper) {
-          handlePaperGenerated(data.paper, inputData.prompt);
+          handlePaperGenerated(data.paper, data.document_id);
         } else {
           setError("Paper content is empty");
           const errorMessages = [
@@ -501,25 +783,26 @@ const ResearchPaperGenerator = () => {
     }
   };
 
-  const handlePaperGenerated = (paperText) => {
+  const handlePaperGenerated = (paperText, documentId) => {
     setIsProcessing(false);
     setIsGenerating(false);
-  
+
     // Set the paper content
     setPaperContent(paperText);
-    
+
     // Convert markdown to HTML
     const html = convertMarkdownToHtml(paperText);
     setPaperHtml(html);
-  
+
     // Create a new assistant message with the paper
     const assistantMessage = {
       role: "assistant",
       text: `Here is your generated research paper:`,
       paperContent: paperText,
-      timestamp: new Date().toISOString()
+      documentId: documentId,
+      timestamp: new Date().toISOString(),
     };
-  
+
     // Update chat messages by removing the loading message and adding the assistant response
     const newMessages = [
       ...chatMessages.filter((msg) => msg.role !== "system"),
@@ -527,7 +810,16 @@ const ResearchPaperGenerator = () => {
     ];
     setChatMessages(newMessages);
     updateMessages(newMessages);
-  
+
+    // Track paper generation if user is authenticated
+    if (isAuthenticated && userData) {
+      ActivityService.trackPaperGeneration({
+        documentId: documentId,
+        topic: getCurrentChat()?.topic || "Untitled Research",
+        wordCount: paperText.split(/\s+/).length,
+      });
+    }
+
     // Automatically show the paper in full view
     setShowPaper(true);
     setIsEditingPaper(false);
@@ -646,7 +938,7 @@ const ResearchPaperGenerator = () => {
         {layoutChanged && (
           <LeftDrawer darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
         )}
-  
+
         <div className={`right-column ${!layoutChanged ? "no-drawer" : ""}`}>
           {!layoutChanged && (
             <header className="header">
@@ -661,7 +953,7 @@ const ResearchPaperGenerator = () => {
               </p>
             </header>
           )}
-  
+
           {isProcessing ? (
             <div className="processing-container">
               {processingSteps.map((step, index) => (
@@ -679,7 +971,7 @@ const ResearchPaperGenerator = () => {
           ) : showPaper ? (
             <div className="paper-container">
               <h2>Research Paper</h2>
-              
+
               {isEditingPaper ? (
                 <>
                   <textarea
@@ -688,27 +980,27 @@ const ResearchPaperGenerator = () => {
                     onChange={(e) => setPaperContent(e.target.value)}
                     style={{
                       width: "100%",
-                      minHeight: "70vh", // Increased height
-                      padding: "30px",   // More padding
+                      minHeight: "70vh",
+                      padding: "30px",
                       border: "1px solid #ddd",
                       borderRadius: "4px",
-                      fontFamily: "'Times New Roman', Times, serif", // IEEE style font
-                      fontSize: "16px",  // Larger font
+                      fontFamily: "'Times New Roman', Times, serif",
+                      fontSize: "16px",
                       lineHeight: "1.6",
-                      resize: "vertical"
+                      resize: "vertical",
                     }}
                   />
-                  
+
                   <div className="paper-actions">
                     <button
                       className="submit-button primary"
                       onClick={() => {
                         setIsEditingPaper(false);
-                        
+
                         // Update HTML when saving edits
                         const html = convertMarkdownToHtml(paperContent);
                         setPaperHtml(html);
-                        
+
                         // Create a system message to inform user of save
                         const systemMessage = {
                           role: "system",
@@ -721,21 +1013,23 @@ const ResearchPaperGenerator = () => {
                     >
                       Save Edits
                     </button>
-                    
+
                     <button
                       className="submit-button secondary"
                       onClick={() => {
                         // Discard changes and restore original content
                         setIsEditingPaper(false);
-                        
+
                         // Get original content from chat
                         const paperMessage = chatMessages.find(
                           (msg) => msg.role === "assistant" && msg.paperContent
                         );
-                        
+
                         if (paperMessage) {
                           setPaperContent(paperMessage.paperContent);
-                          setPaperHtml(convertMarkdownToHtml(paperMessage.paperContent));
+                          setPaperHtml(
+                            convertMarkdownToHtml(paperMessage.paperContent)
+                          );
                         }
                       }}
                     >
@@ -746,48 +1040,30 @@ const ResearchPaperGenerator = () => {
               ) : (
                 <>
                   {/* HTML Paper Content Display */}
-                  <div 
+                  <div
                     className="paper-content-display"
                     ref={paperContentRef}
                     dangerouslySetInnerHTML={{ __html: paperHtml }}
                   />
-                  
+
+                  {/* New simplified action buttons */}
+                  {/* New simplified action buttons */}
                   <div className="paper-actions">
-                    <div className="paper-action-buttons">
-                      <button 
-                        className="action-button"
-                        onClick={handleEditPaper}
-                        title="Edit Paper"
-                      >
-                        <Edit size={16} />
-                        <span>Edit</span>
-                      </button>
-                      
-                      <button 
-                        className="action-button"
-                        onClick={handleCopyToClipboard}
-                        title="Copy to Clipboard"
-                      >
-                        <Copy size={16} />
-                        <span>Copy</span>
-                      </button>
-                      
-                      <button 
-                        className="action-button"
-                        onClick={handleSavePaper}
-                        title="Download Paper as HTML"
-                      >
-                        <Download size={16} />
-                        <span>Download HTML</span>
-                      </button>
-                      
+                    <div className="paper-actions-inner">
                       <button
-                        className="action-button secondary"
-                        onClick={() => setShowPaper(false)}
-                        title="Return to Chat"
+                        className="submit-button secondary"
+                        onClick={handleCopyToClipboard}
                       >
-                        <MessageSquare size={16} />
-                        <span>Chat</span>
+                        <Copy size={18} />
+                        Copy to Clipboard
+                      </button>
+
+                      <button
+                        className="submit-button secondary"
+                        onClick={handleDocxDownload}
+                      >
+                        <FileDown size={18} />
+                        Download as DOCX
                       </button>
                     </div>
                   </div>
@@ -795,6 +1071,7 @@ const ResearchPaperGenerator = () => {
               )}
             </div>
           ) : (
+            // fallback to chat UI if no paper
             <>
               <div
                 className="chat-container"
@@ -802,11 +1079,7 @@ const ResearchPaperGenerator = () => {
                 style={{ display: chatMessages.length > 0 ? "flex" : "none" }}
               >
                 {chatMessages.map((message, index) => (
-                  <ChatMessage 
-                    key={index} 
-                    message={message} 
-                    onClick={handleOpenFullPaper}
-                  />
+                  <ChatMessage key={index} message={message} />
                 ))}
                 {isGenerating && (
                   <div className="typing-indicator">
@@ -817,22 +1090,22 @@ const ResearchPaperGenerator = () => {
                 )}
                 <div ref={messagesEndRef} />
               </div>
-  
+
               {chatMessages.length === 0 && (
                 <div className="empty-chat">
                   <div className="empty-chat-content">
                     <Sparkles size={48} className="empty-chat-icon" />
                     <h1>Generate Research Papers</h1>
                     <p>
-                      Enter your topic or provide a code repository to generate a research
-                      paper
+                      Enter your topic or provide a code repository to generate
+                      a research paper
                     </p>
                   </div>
                 </div>
               )}
             </>
           )}
-  
+
           <div
             className={`input-section-container ${
               isGenerating ? "generating" : ""
@@ -857,7 +1130,7 @@ const ResearchPaperGenerator = () => {
                       </button>
                     </div>
                   )}
-                  
+
                   <textarea
                     ref={textareaRef}
                     className="input-field"
@@ -867,16 +1140,18 @@ const ResearchPaperGenerator = () => {
                     placeholder="Enter a topic to start generating a research paper..."
                     rows={1}
                   />
-                
+
                   <button
                     type="button"
-                    className={`source-button ${selectedSource === "github" ? "active" : ""}`}
+                    className={`source-button ${
+                      selectedSource === "github" ? "active" : ""
+                    }`}
                     onClick={toggleGithubInput}
                     title="Add GitHub repository"
                   >
                     <Github size={18} />
                   </button>
-                
+
                   <button
                     type="submit"
                     className="send-button"
@@ -885,7 +1160,7 @@ const ResearchPaperGenerator = () => {
                     <SendHorizontal size={18} />
                   </button>
                 </div>
-                
+
                 {/* GitHub URL input field appears directly below the main input */}
                 {showGithubInput && (
                   <div className="github-url-container">
