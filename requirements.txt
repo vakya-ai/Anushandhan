@@ -1,4 +1,12 @@
-uvicorn
 fastapi
-motor
+uvicorn
+pydantic
+pydantic-settings
+python-jose  # for JWT handling (see note below)
+PyJWT
+motor  # MongoDB async driver
+odmantic  # ODM for MongoDB
 aiohttp
+google-generativeai
+python-multipart  # needed if using form parsing
+httpx  # for async HTTP calls (often used with FastAPI)
