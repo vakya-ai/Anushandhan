@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Any
 from ..services.gemini_generator import GeminiGenerator
 from ..services.github_processor import GitHubProcessor
 from ..services.content_generator import ContentGenerator
+from ..utils.paper_humanizer import PaperHumanizer
 
 logger = logging.getLogger(__name__)
 
@@ -17,12 +18,13 @@ router = APIRouter()
 class ResearchPaperGenerator:
     """
     Service to generate research papers from code repositories
-    using the Gemini AI model.
+    using the Gemini AI model with enhanced humanization.
     """
     def __init__(self):
         self.gemini_generator = GeminiGenerator()
         self.github_processor = GitHubProcessor()
         self.content_generator = ContentGenerator()
+        self.humanizer = PaperHumanizer()
         
     async def generate_research_paper(
         self,
@@ -71,6 +73,8 @@ IMPORTANT INSTRUCTIONS:
 4. Focus on how the codebase is structured, including important modules, classes, and functions.
 5. Structure your response like a formal software engineering report, with sections for architecture, key components, and (optionally) a function index.
 6. Where relevant, include a table listing function names, parameters, and a one-line description.
+7. Write in a natural, human-like manner that flows well and sounds professional.
+8. Use varied sentence structures and avoid repetitive patterns.
 """
                     else:
                         system_prompt = """
@@ -83,12 +87,16 @@ EXTREMELY IMPORTANT INSTRUCTIONS - You MUST follow these exactly:
 4. Focus ONLY on high-level architectural concepts, design patterns, and software engineering principles
 5. Structure your response like a traditional academic paper with ONLY the standard sections
 6. Your analysis should focus on architectural patterns, not implementation details
+7. Write in a natural, human-like academic style that flows well
+8. Use varied sentence structures and avoid repetitive or robotic patterns
+9. Include thoughtful insights and analysis rather than just descriptions
 """
 
                     for section in sections:
                         if section in ["code_analysis", "code analysis", "implementation"]:
                             continue
 
+                        # Generate base content
                         if include_function_details:
                             section_instruction = f"""
 Generate the {section} section for a technical research paper about the repository.
@@ -97,6 +105,8 @@ Generate the {section} section for a technical research paper about the reposito
 - Provide tables or lists of important functions with their purposes and parameters.
 - DO NOT include raw code snippets.
 - Focus on code structure, architecture, and key components.
+- Write naturally and professionally, as if a human academic wrote this.
+- Use varied sentence structures and smooth transitions between ideas.
 """
                         else:
                             section_instruction = f"""
@@ -107,6 +117,9 @@ EXTREMELY IMPORTANT:
 - DO NOT include file-by-file analysis
 - DO NOT mention specific variable names, function names, or code details
 - Focus ONLY on high-level architectural concepts and software engineering principles
+- Write in a natural, human-like academic style
+- Use thoughtful analysis and insights, not just descriptions
+- Ensure smooth flow and proper transitions between ideas
 """
 
                         repo_info = f"""
@@ -125,16 +138,21 @@ Generate the references section for an IEEE research paper about software archit
 Format the references in proper IEEE format.
 Include the GitHub repository as the first reference. Then include relevant software engineering references.
 DO NOT make up fake citations - use only legitimate, well-known software engineering books and papers.
+Write the references in a natural, proper academic format.
 """
-                            result[section] = await self.gemini_generator._generate_with_gemini(
-                                "You are a bibliography generator for IEEE papers. You create proper IEEE format references.",
+                            base_content = await self.gemini_generator._generate_with_gemini(
+                                "You are a bibliography generator for IEEE papers. You create proper IEEE format references with natural academic formatting.",
                                 f"{refs_instruction}\n\nRepository: {repo_url}\nNo code snippets allowed."
                             )
                         else:
-                            result[section] = await self.gemini_generator._generate_with_gemini(
+                            base_content = await self.gemini_generator._generate_with_gemini(
                                 system_prompt,
                                 f"{section_instruction}\n\nRepository Metadata:\n{repo_info}"
                             )
+                        
+                        # Humanize the content
+                        result[section] = await self.humanizer.humanize_content(base_content, section)
+                        
                 finally:
                     if os.path.exists(repo_path):
                         try:
@@ -142,46 +160,49 @@ DO NOT make up fake citations - use only legitimate, well-known software enginee
                         except Exception as cleanup_error:
                             logger.warning(f"Failed to clean up temporary directory: {str(cleanup_error)}")
             else:
-                # Topic-only generation
-                combined_prompt = f"Generate a research paper on the topic: {topic}. "
-                combined_prompt += f"Include the following sections: {', '.join(sections)}. "
-                combined_prompt += f"The paper should be approximately {word_count} words. "
-                combined_prompt += f"DO NOT include code snippets or a 'Code Analysis' section. "
-                combined_prompt += f"This should be a formal academic paper in IEEE format."
+                # Topic-only generation with humanization
+                target_words_per_section = max(200, word_count // len(sections))
+                
+                for section in sections:
+                    if section == "references":
+                        combined_prompt = f"""
+Generate the references section for a research paper on the topic: {topic}.
+Include legitimate academic references in proper IEEE format.
+Ensure the references are relevant to {topic} and properly formatted.
+Write them naturally as they would appear in a professional academic paper.
+"""
+                    else:
+                        combined_prompt = f"""
+Generate the {section} section for a research paper on the topic: {topic}.
+This section should be approximately {target_words_per_section} words.
+Write in a natural, human-like academic style with:
+- Varied sentence structures
+- Smooth transitions between ideas
+- Professional yet engaging tone
+- Thoughtful insights and analysis
+- Proper academic vocabulary without being overly complex
+Focus on {topic} and ensure the content is relevant and well-structured.
+"""
 
-                system_prompt = "You are a research paper generator that creates comprehensive, "
-                system_prompt += "well-structured academic papers on a given topic in IEEE format. "
-                system_prompt += "Focus on traditional academic writing, following a formal structure with "
-                system_prompt += "Abstract, Introduction, Literature Review, Methodology, Results, Discussion, Conclusion, and References. "
-                system_prompt += "DO NOT include code snippets or implementation details."
+                    system_prompt = """
+You are a research paper generator that creates comprehensive, well-structured academic papers.
+Your writing should sound natural and human-like, with:
+- Varied sentence structures and lengths
+- Smooth transitions between paragraphs
+- Thoughtful analysis and insights
+- Professional yet accessible language
+- Proper academic tone without being robotic
+Write in IEEE format with proper structure and flow.
+"""
 
-                try:
-                    response = await self.gemini_generator._generate_with_gemini(system_prompt, combined_prompt)
+                    try:
+                        base_content = await self.gemini_generator._generate_with_gemini(system_prompt, combined_prompt)
+                        result[section] = await self.humanizer.humanize_content(base_content, section)
+                    except Exception as e:
+                        logger.error(f"Error generating {section}: {str(e)}")
+                        result[section] = f"Error generating {section}. Please try again."
 
-                    current_section = None
-                    for line in response.split('\n'):
-                        line = line.strip()
-                        if not line:
-                            continue
-                        lower_line = line.lower()
-                        found_section = None
-                        for section in sections:
-                            if section in lower_line or section.replace('_', ' ') in lower_line:
-                                found_section = section
-                                break
-                        if found_section:
-                            current_section = found_section
-                            result[current_section] = ""
-                        elif current_section:
-                            result[current_section] += line + "\n"
-
-                    for section in sections:
-                        if section not in result:
-                            result[section] = f"Content for {section} section."
-                except Exception as e:
-                    logger.error(f"Error generating paper with Gemini: {str(e)}")
-                    raise
-
+            # Format and structure the final paper
             formatted_result = {}
             section_order = ["abstract", "introduction", "literature_review", "methodology",
                              "results", "discussion", "conclusion", "references"]
@@ -190,24 +211,11 @@ DO NOT make up fake citations - use only legitimate, well-known software enginee
                 formatted_section = ' '.join(word.capitalize() for word in section.split('_'))
                 formatted_result[formatted_section] = result.get(section, f"This {formatted_section} section was not generated.")
 
-            ieee_header = "## IEEE Conference Paper\n\n"
-            if repo_url:
-                parts = repo_url.rstrip('/').split('/')
-                owner = parts[-2] if len(parts) >= 2 else "Unknown"
-                repo_name = parts[-1] if len(parts) >= 1 else "Unknown"
-                ieee_header += f"**Repository**: {owner}/{repo_name}\n"
-            else:
-                ieee_header += f"**Topic**: {topic}\n"
-
-            ieee_header += f"**Date**: {datetime.now().strftime('%B %d, %Y')}\n"
-            if repo_url:
-                ieee_header += f"**URL**: {repo_url}\n\n"
-
-            full_paper = f"# Research Paper: {topic}\n\n{ieee_header}"
-            for section in section_order:
-                formatted_section = ' '.join(word.capitalize() for word in section.split('_'))
-                full_paper += f"## {formatted_section}\n\n{result.get(section, '')}\n\n"
-
+            # Create IEEE-style header with better formatting
+            ieee_header = self._generate_ieee_header(topic, repo_url)
+            
+            # Construct full paper with proper structure
+            full_paper = self._construct_full_paper(topic, ieee_header, result, section_order)
             formatted_result["Full Paper"] = full_paper
 
             return formatted_result
@@ -216,6 +224,81 @@ DO NOT make up fake citations - use only legitimate, well-known software enginee
             import traceback
             logger.error(f"Error generating research paper: {str(e)}\n{traceback.format_exc()}")
             raise
+    
+    def _generate_ieee_header(self, topic: str, repo_url: Optional[str] = None) -> str:
+        """Generate a properly formatted IEEE-style header"""
+        header = "## IEEE Conference Paper\n\n"
+        header += f"**Title**: {topic}\n"
+        
+        if repo_url:
+            parts = repo_url.rstrip('/').split('/')
+            owner = parts[-2] if len(parts) >= 2 else "Unknown"
+            repo_name = parts[-1] if len(parts) >= 1 else "Unknown"
+            header += f"**Repository**: {owner}/{repo_name}\n"
+            header += f"**URL**: {repo_url}\n"
+        
+        header += f"**Date**: {datetime.now().strftime('%B %d, %Y')}\n"
+        header += f"**Authors**: Research Paper Generator v2.0\n\n"
+        
+        return header
+    
+    def _construct_full_paper(self, topic: str, header: str, content: Dict[str, str], section_order: List[str]) -> str:
+        """Construct the full paper with proper formatting and structure"""
+        full_paper = f"# {topic}\n\n"
+        full_paper += header
+        
+        # Add table of contents
+        full_paper += "## Table of Contents\n\n"
+        for i, section in enumerate(section_order, 1):
+            formatted_section = ' '.join(word.capitalize() for word in section.split('_'))
+            full_paper += f"{i}. {formatted_section}\n"
+        full_paper += "\n---\n\n"
+        
+        # Add sections with proper numbering
+        section_numbers = {
+            "abstract": "0",
+            "introduction": "I",
+            "literature_review": "II",
+            "methodology": "III",
+            "results": "IV",
+            "discussion": "V",
+            "conclusion": "VI",
+            "references": ""
+        }
+        
+        for section in section_order:
+            formatted_section = ' '.join(word.capitalize() for word in section.split('_'))
+            
+            if section == "abstract":
+                full_paper += f"## Abstract\n\n"
+            elif section == "references":
+                full_paper += f"## References\n\n"
+            else:
+                full_paper += f"## {section_numbers[section]}. {formatted_section}\n\n"
+            
+            content_text = content.get(section, f"This {formatted_section} section was not generated.")
+            
+            # Add some formatting improvements
+            if section == "references":
+                # Format references with proper numbering
+                refs = content_text.split('\n')
+                formatted_refs = []
+                for i, ref in enumerate(refs, 1):
+                    if ref.strip() and not ref.startswith('['):
+                        formatted_refs.append(f"[{i}] {ref.strip()}")
+                    elif ref.strip():
+                        formatted_refs.append(ref)
+                full_paper += '\n'.join(formatted_refs)
+            else:
+                full_paper += content_text
+            
+            full_paper += "\n\n"
+        
+        # Add footer
+        full_paper += "---\n\n"
+        full_paper += "*This paper was generated using advanced AI technology for research and educational purposes.*\n"
+        
+        return full_paper
 
 generator = ResearchPaperGenerator()
 
