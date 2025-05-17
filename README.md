@@ -1,4 +1,4 @@
-# AcademAI-v2
+# AcademAI
 
 **Your AI-Powered Research Paper Generator**
 
