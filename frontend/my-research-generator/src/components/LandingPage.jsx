@@ -86,7 +86,7 @@ const LandingPage = () => {
         <nav className="navbar">
           <div className="logo">
             <FileText />
-            <span>ResearchAI</span>
+            <span>AcademAI</span>
           </div>
         </nav>
 
