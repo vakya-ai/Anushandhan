@@ -944,7 +944,7 @@ const ResearchPaperGenerator = () => {
             <header className="header">
               <div className="logo">
                 <FileText className="logo-icon" />
-                <span>ResearchAI</span>
+                <span>AcademAI</span>
               </div>
               <h1>Research Paper Generator</h1>
               <p>
