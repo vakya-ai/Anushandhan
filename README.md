@@ -1,6 +1,6 @@
-# Vvakya.ai - A Unified & Collaborative AI Research Generation Platform
+# Vakya.ai - A Unified & Collaborative AI Research Generation Platform
 
-Vvakya.ai is a comprehensive AI-first research platform designed for researchers, developers, educators, and institutions. It redefines the research and publication workflow—from converting code into structured academic papers, to facilitating collaboration, citation management, multilingual support, and intelligent content generation.
+Vakya.ai is a comprehensive AI-first research platform designed for researchers, developers, educators, and institutions. It redefines the research and publication workflow—from converting code into structured academic papers, to facilitating collaboration, citation management, multilingual support, and intelligent content generation.
 
 ---
 
