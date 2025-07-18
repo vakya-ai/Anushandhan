@@ -1,175 +1,75 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, Request, status
+# backend/app/api/papers.py
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from typing import Dict, List, Any, Optional
-import jwt
-from datetime import datetime
-from app.core.database import get_database
+from typing import Dict, Any
+
+# Imports for secure token verification
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import os # Recommended for handling environment variables
 
 router = APIRouter(prefix="/api/papers", tags=["papers"])
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    try:
-        token = credentials.credentials
-        # Here we would normally verify the token with Google
-        # For simplicity, we just decode it to get the user ID
-        decoded_token = jwt.decode(token, options={"verify_signature": False})
-        return decoded_token
-    except Exception as e:
+# It's best practice to load your Client ID from an environment variable
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", str)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """
+    Securely validates a Google ID token and returns the user's information.
+    This function is now self-contained and secure.
+    """
+    token = credentials.credentials
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid authentication credentials: {str(e)}",
+            detail="Authentication token is missing",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-@router.post("/track-generation")
-async def track_paper_generation(
-    paper_data: Dict[str, Any] = Body(...), 
-    user=Depends(get_current_user),
-    db=Depends(get_database)
-):
-    """
-    Track paper generation activity
-    """
     try:
-        # Get user ID from token
-        user_id = user.get("sub")
-        
-        # Extract paper details
-        document_id = paper_data.get("documentId")
-        topic = paper_data.get("topic")
-        
-        # Create paper activity record
-        paper_activity = {
-            "userId": user_id,
-            "documentId": document_id,
-            "topic": topic,
-            "type": "generation",
-            "timestamp": datetime.now(),
-            "details": {
-                "sections": paper_data.get("sections", []),
-                "wordCount": paper_data.get("wordCount"),
-                "sourceType": paper_data.get("sourceType"),
-                "sourceUrl": paper_data.get("sourceUrl"),
-            }
-        }
-        
-        # Store in paper_activities collection
-        await db.get_collection("paper_activities").insert_one(paper_activity)
-        
-        # Update user's generated papers count
-        await db.get_collection("users").update_one(
-            {"googleId": user_id},
-            {"$inc": {"papersGenerated": 1}}
+        # Verify the token with Google's servers
+        id_info = id_token.verify_oauth2_token(
+            token, requests.Request(), GOOGLE_CLIENT_ID
         )
-        
-        return {"status": "success", "message": "Paper generation tracked"}
-        
-    except Exception as e:
-        # Log error but don't fail the request
-        print(f"Error tracking paper generation: {str(e)}")
-        return {"status": "error", "message": str(e)}
 
-@router.post("/track-view")
-async def track_paper_view(
-    data: Dict[str, Any] = Body(...), 
-    user=Depends(get_current_user),
-    db=Depends(get_database)
-):
-    """
-    Track paper view activity
-    """
-    try:
-        # Get user ID from token
-        user_id = user.get("sub")
-        
-        # Extract details
-        document_id = data.get("documentId")
-        
-        # Create paper activity record
-        paper_activity = {
-            "userId": user_id,
-            "documentId": document_id,
-            "type": "view",
-            "timestamp": datetime.now()
-        }
-        
-        # Store in paper_activities collection
-        await db.get_collection("paper_activities").insert_one(paper_activity)
-        
-        return {"status": "success", "message": "Paper view tracked"}
-        
-    except Exception as e:
-        # Log error but don't fail the request
-        print(f"Error tracking paper view: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        # 'sub' is Google's unique ID for the user.
+        return id_info
 
-@router.post("/track-download")
-async def track_paper_download(
-    data: Dict[str, Any] = Body(...), 
-    user=Depends(get_current_user),
-    db=Depends(get_database)
-):
-    """
-    Track paper download activity
-    """
-    try:
-        # Get user ID from token
-        user_id = user.get("sub")
-        
-        # Extract details
-        document_id = data.get("documentId")
-        format = data.get("format", "html")
-        
-        # Create paper activity record
-        paper_activity = {
-            "userId": user_id,
-            "documentId": document_id,
-            "type": "download",
-            "format": format,
-            "timestamp": datetime.now()
-        }
-        
-        # Store in paper_activities collection
-        await db.get_collection("paper_activities").insert_one(paper_activity)
-        
-        return {"status": "success", "message": "Paper download tracked"}
-        
+    except ValueError as e:
+        # Catches invalid tokens (e.g., expired, wrong audience, bad signature)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid authentication credentials: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except Exception as e:
-        # Log error but don't fail the request
-        print(f"Error tracking paper download: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        # Handle other potential errors during verification
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred during authentication: {e}",
+        )
 
-@router.get("/history")
-async def get_paper_history(
-    user=Depends(get_current_user),
-    db=Depends(get_database)
-):
+# Example of a protected endpoint in papers.py
+@router.get("/my-papers")
+async def get_my_papers(user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Get user's paper generation history
+    Example protected endpoint to get papers belonging to the authenticated user.
     """
-    try:
-        # Get user ID from token
-        user_id = user.get("sub")
-        
-        # Get all papers generated by this user
-        paper_collection = db.get_collection("paper_activities")
-        papers = await paper_collection.find(
-            {"userId": user_id, "type": "generation"}
-        ).sort("timestamp", -1).to_list(100)  # Limit to last 100 papers
-        
-        # Format for response
-        result = []
-        for paper in papers:
-            result.append({
-                "documentId": paper.get("documentId"),
-                "topic": paper.get("topic"),
-                "timestamp": paper.get("timestamp").isoformat(),
-                "sourceType": paper.get("details", {}).get("sourceType"),
-                "sections": paper.get("details", {}).get("sections")
-            })
-        
-        return {"papers": result}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error fetching paper history: {str(e)}")
+    # The user object is the payload from the verified Google token
+    user_email = user.get("email")
+    user_google_id = user.get("sub")
+
+    # Here, you would add your logic to fetch papers from your database
+    # based on the user_google_id.
+    
+    # For demonstration purposes, we'll just return a confirmation message.
+    return {
+        "message": f"Successfully accessed protected paper route for user {user_email}.",
+        "userId": user_google_id,
+        "papers": [
+            {"id": "paper1", "title": "Example Paper Title 1"},
+            {"id": "paper2", "title": "Example Paper Title 2"},
+        ]
+    }
