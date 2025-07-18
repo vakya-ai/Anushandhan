@@ -44,4 +44,3 @@ dist-ssr
 .venv/
 venv/
 **/.env
-backend/app/core/config.py
