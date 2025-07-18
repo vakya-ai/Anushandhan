@@ -10,3 +10,4 @@ aiohttp
 google-generativeai
 python-multipart  # needed if using form parsing
 httpx  # for async HTTP calls (often used with FastAPI)
+google-auth
