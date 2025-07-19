@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     MONGODB_PASSWORD: str
     MONGODB_CLUSTER: str
     MONGODB_DB_NAME: str
-    MONGODB_URL: str  # Add this line to allow the mongodb_url field
+    MONGODB_URL: str # Add this line to allow the mongodb_url field
     
     # Redis settings
     REDIS_URL: str
@@ -25,6 +25,6 @@ class Settings(BaseSettings):
     GITHUB_TOKEN: str
     
     class Config:
-        env_file = "utf-8"
+        env_file = ".env"
 
 settings = Settings()
