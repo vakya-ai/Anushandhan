@@ -55,74 +55,53 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
 
 
-@router.post("/")
-async def create_chat(
+@router.post("/sync")
+async def sync_chats(
     chat_data: Dict[str, Any],
     db: Database = Depends(get_database),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
-    Create a new chat session.
+    Create a chat, get all chats, and return full histories for each.
     """
     try:
-        user_google_id = user.get("sub")  # Use 'sub' from the verified token
-        chat_collection = db.get_collection("chats")
-        
-        new_chat = await chat_collection.insert_one({
+        user_google_id = user.get("sub")
+        chats_collection = db.get_collection("chats")
+
+        # 1. Create a new chat
+        new_chat = await chats_collection.insert_one({
             "userId": user_google_id,
             "title": chat_data.get("title", "New Chat"),
             "history": [],
             "createdAt": chat_data.get("createdAt")
         })
-        
-        return {"status": "success", "chatId": str(new_chat.inserted_id)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/")
-async def get_chats(
-    db: Database = Depends(get_database),
-    user: Dict[str, Any] = Depends(get_current_user)
-) -> List[Dict[str, Any]]:
-    """
-    Retrieve all chats for the authenticated user.
-    """
-    try:
-        user_google_id = user.get("sub")
-        chats_collection = db.get_collection("chats")
-        
+        # 2. Get all chats
         chats_cursor = chats_collection.find({"userId": user_google_id})
         chats = []
+        chat_ids = []
         async for chat in chats_cursor:
-            chat["_id"] = str(chat["_id"]) # Convert ObjectId to string
+            chat_id = str(chat["_id"])
+            chat["_id"] = chat_id
+            chat_ids.append(chat_id)
             chats.append(chat)
-            
-        return chats
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
+        # 3. Get histories for each chat
+        histories = {}
+        for chat_id in chat_ids:
+            chat_doc = await chats_collection.find_one({
+                "_id": ObjectId(chat_id),
+                "userId": user_google_id
+            })
+            if chat_doc:
+                histories[chat_id] = chat_doc.get("history", [])
 
-@router.get("/{chat_id}/history")
-async def get_chat_history(
-    chat_id: str,
-    db: Database = Depends(get_database),
-    user: Dict[str, Any] = Depends(get_current_user)
-):
-    """
-    Retrieve the message history for a specific chat.
-    """
-    try:
-        user_google_id = user.get("sub")
-        chats_collection = db.get_collection("chats")
+        return {
+            "status": "success",
+            "newChatId": str(new_chat.inserted_id),
+            "allChats": chats,
+            "histories": histories
+        }
 
-        chat = await chats_collection.find_one({
-            "_id": ObjectId(chat_id),
-            "userId": user_google_id  # Ensure the user owns this chat
-        })
-
-        if not chat:
-            raise HTTPException(status_code=404, detail="Chat not found or access denied")
-            
-        return {"history": chat.get("history", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
