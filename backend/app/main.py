@@ -27,7 +27,7 @@ from app.api.chats import router as chats_router
 from app.api.papers import router as papers_router
 
 # Include all routers
-app.include_router(research_router, prefix="/api/research_generator")
+app.include_router(research_router, prefix="/api/research")
 app.include_router(auth_router)  # Auth router already has /api/auth prefix
 app.include_router(chats_router)  # Chats router already has /api/chats prefix
 app.include_router(papers_router)  # Papers router already has /api/papers prefix

@@ -105,3 +105,26 @@ async def sync_chats(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("")
+async def get_chats(
+    db: Database = Depends(get_database),
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Get all chats for the current user.
+    """
+    try:
+        user_google_id = user.get("sub")
+        chats_collection = db.get_collection("chats")
+
+        chats_cursor = chats_collection.find({"userId": user_google_id})
+        chats = []
+        async for chat in chats_cursor:
+            chat["_id"] = str(chat["_id"])
+            chats.append(chat)
+
+        return {"status": "success", "chats": chats}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
