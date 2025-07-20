@@ -35,7 +35,7 @@ app.include_router(papers_router)  # Papers router already has /api/papers prefi
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend domain
+    allow_origins=["https://vakya-pied.vercel.app/"],  # In production, replace with your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
